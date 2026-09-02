@@ -1,0 +1,25 @@
+{
+  "config_version": 1,
+  "platform": "linux",
+  "control_identity": {
+    "name": "awg-control",
+    "identifier": "uid:1001",
+    "primary_group_identifier": "gid:1001"
+  },
+  "execution_identity": {
+    "name": "awg-exec",
+    "identifier": "uid:1002",
+    "primary_group_identifier": "gid:1002"
+  },
+  "approved_roots": ["/srv/awg/projects"],
+  "shells": [
+    {
+      "shell": "bash",
+      "executable": "/bin/bash"
+    }
+  ],
+  "profile_root": "/var/lib/awg/exec",
+  "temp_root": "/var/tmp/awg-exec",
+  "path_entries": ["/usr/bin", "/bin"],
+  "capabilities": []
+}

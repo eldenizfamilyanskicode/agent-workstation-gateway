@@ -65,7 +65,7 @@ The current design requires these boundaries:
 - the privileged broker exposes only a bounded execution protocol, not a generic root/SYSTEM shell;
 - local execution is restricted to explicitly configured development roots;
 - Docker and other high-authority local capabilities are opt-in;
-- Windows and Linux security behavior is implemented and verified using native platform mechanisms.
+- Windows and Linux security behavior must be implemented and verified using native platform mechanisms before release.
 
 See [`docs/threat-model.md`](docs/threat-model.md) and the accepted decisions in [`docs/adr/`](docs/adr/) for the detailed authority and credential model.
 
@@ -113,11 +113,12 @@ Completed foundation work:
 - local public/workflow safety scanner with reachable-history checks;
 - hosted-only public CI verified on GitHub's Windows and Linux runner pools;
 - strict protocol v1 request schema, Go codec/validation, canonicalization, and digest;
-- strict protocol v1 accepted-request/result schemas, provenance and binding validation, failure semantics, and bounded output/artifact metadata.
+- strict protocol v1 accepted-request/result schemas, provenance and binding validation, failure semantics, and bounded output/artifact metadata;
+- shared strict installation configuration, execute-only broker envelope, clean-environment builder, and fail-closed launch-policy core (without native execution claims).
 
 Not implemented yet at this checkpoint:
 
-- Go CLI/control/broker runtime;
+- Go CLI/control/broker executables and native IPC, identity transition, path resolution, process lifecycle, output, and artifact runtime;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
@@ -127,6 +128,8 @@ Not implemented yet at this checkpoint:
 The README will be updated as those capabilities become real and verified.
 
 The implemented protocol v1 contracts are documented in [`docs/protocol-v1.md`](docs/protocol-v1.md).
+
+The implemented shared policy boundary and its explicit native gaps are documented in [`docs/architecture.md`](docs/architecture.md).
 
 ## Architecture decisions
 

@@ -1,0 +1,28 @@
+{
+  "config_version": 1,
+  "platform": "windows",
+  "control_identity": {
+    "name": "awg-control",
+    "identifier": "S-1-5-21-1000-1000-1000-1001",
+    "primary_group_identifier": "S-1-5-32-545"
+  },
+  "execution_identity": {
+    "name": "awg-exec",
+    "identifier": "S-1-5-21-1000-1000-1000-1002",
+    "primary_group_identifier": "S-1-5-32-545"
+  },
+  "approved_roots": ["C:\\Users\\Alice\\Projects"],
+  "shells": [
+    {
+      "shell": "pwsh",
+      "executable": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+    }
+  ],
+  "profile_root": "C:\\ProgramData\\AWG\\Profiles\\Exec",
+  "temp_root": "C:\\ProgramData\\AWG\\Temp",
+  "path_entries": [
+    "C:\\Program Files\\PowerShell\\7",
+    "C:\\Windows\\System32"
+  ],
+  "capabilities": []
+}

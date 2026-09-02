@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/config/schemas/v1/installation.schema.json",
+  "title": "Agent Workstation Gateway installation configuration v1",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 65536,
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "platform",
+    "control_identity",
+    "execution_identity",
+    "approved_roots",
+    "shells",
+    "profile_root",
+    "temp_root",
+    "path_entries",
+    "capabilities"
+  ],
+  "properties": {
+    "config_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["linux", "windows"]
+    },
+    "control_identity": {
+      "$ref": "#/$defs/principal"
+    },
+    "execution_identity": {
+      "$ref": "#/$defs/principal"
+    },
+    "approved_roots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/absolute_path"}
+    },
+    "shells": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/shell_binding"}
+    },
+    "profile_root": {
+      "$ref": "#/$defs/absolute_path"
+    },
+    "temp_root": {
+      "$ref": "#/$defs/absolute_path"
+    },
+    "path_entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/absolute_path"}
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["docker"]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"platform": {"const": "windows"}}},
+      "then": {
+        "properties": {
+          "control_identity": {"properties": {"identifier": {"pattern": "^S-1-[0-9]+(?:-[0-9]+){1,14}$"}, "primary_group_identifier": {"pattern": "^S-1-[0-9]+(?:-[0-9]+){1,14}$"}}},
+          "execution_identity": {"properties": {"identifier": {"pattern": "^S-1-[0-9]+(?:-[0-9]+){1,14}$"}, "primary_group_identifier": {"pattern": "^S-1-[0-9]+(?:-[0-9]+){1,14}$"}}},
+          "approved_roots": {"items": {"pattern": "^[A-Z]:\\\\"}},
+          "shells": {
+            "items": {
+              "properties": {
+                "shell": {"enum": ["cmd", "git-bash", "powershell", "pwsh"]},
+                "executable": {"pattern": "^[A-Z]:\\\\"}
+              }
+            }
+          },
+          "profile_root": {"pattern": "^[A-Z]:\\\\"},
+          "temp_root": {"pattern": "^[A-Z]:\\\\"},
+          "path_entries": {"items": {"pattern": "^[A-Z]:\\\\"}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"platform": {"const": "linux"}}},
+      "then": {
+        "properties": {
+          "control_identity": {"properties": {"identifier": {"pattern": "^uid:[1-9][0-9]{0,9}$"}, "primary_group_identifier": {"pattern": "^gid:[1-9][0-9]{0,9}$"}}},
+          "execution_identity": {"properties": {"identifier": {"pattern": "^uid:[1-9][0-9]{0,9}$"}, "primary_group_identifier": {"pattern": "^gid:[1-9][0-9]{0,9}$"}}},
+          "approved_roots": {"items": {"pattern": "^/"}},
+          "shells": {
+            "items": {
+              "properties": {
+                "shell": {"enum": ["bash", "pwsh"]},
+                "executable": {"pattern": "^/"}
+              }
+            }
+          },
+          "profile_root": {"pattern": "^/"},
+          "temp_root": {"pattern": "^/"},
+          "path_entries": {"items": {"pattern": "^/"}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "identifier", "primary_group_identifier"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 184
+        },
+        "primary_group_identifier": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 184
+        }
+      }
+    },
+    "absolute_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "x-awg-max-utf8-bytes": 1024
+    },
+    "shell_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shell", "executable"],
+      "properties": {
+        "shell": {
+          "type": "string"
+        },
+        "executable": {
+          "$ref": "#/$defs/absolute_path"
+        }
+      }
+    }
+  }
+}
