@@ -123,11 +123,12 @@ Completed foundation work:
 - Windows machine-protected credential file and fixed-account batch-logon/profile token source (without installer-created-account success claims).
 - strict Windows install specification, mutation-free `awg install --dry-run`, and native protected broker-state materializer (not yet wired to mutating account/service installation).
 - create-new Windows control/execution account transaction with crypto-random credentials, Users-only policy, fixed LSA logon rights, SID binding, and owned rollback (mutating path reserved for isolated elevated verification).
+- rollback-capable Windows approved-root/profile/temp ACL convergence with same-handle validation and exact restricted execution rights (installed-account effective access reserved for isolated verification).
 
 Not implemented yet at this checkpoint:
 
 - Go CLI/control/broker executables, native IPC, artifact filesystem/runtime implementation, and remaining installed-host integration;
-- Windows installer/service/ACL lifecycle;
+- Windows mutating installer and service lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
 - Linux/systemd implementation and smoke tests;
@@ -149,6 +150,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0006 — Windows Restricted Process and Job Boundary`](docs/adr/0006-windows-restricted-process-and-job-boundary.md)
 - [`ADR 0007 — Windows Protected Batch Token Source`](docs/adr/0007-windows-protected-batch-token-source.md)
 - [`ADR 0008 — Windows Local Account and Logon-Right Provisioning`](docs/adr/0008-windows-local-account-and-logon-right-provisioning.md)
+- [`ADR 0009 — Windows Workload Filesystem ACLs`](docs/adr/0009-windows-workload-filesystem-acls.md)
 
 ## Contributing and security
 

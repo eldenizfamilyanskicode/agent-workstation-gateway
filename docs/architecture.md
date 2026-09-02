@@ -65,6 +65,8 @@ The decoder validates configuration content. It does not prove file ownership or
 
 [`internal/accountprovision`](../internal/accountprovision) owns the create-new identity transaction. The native Windows implementation is closed to the two validated account names, Users-only membership, and fixed service/batch plus deny-logon right sets. A lease carries generated credentials only into subsequent local installation steps, tracks partial NetAPI success for rollback, and clears credentials on commit/close. [ADR 0008](adr/0008-windows-local-account-and-logon-right-provisioning.md) records why existing accounts are not implicitly adopted.
 
+[`internal/filesystemprovision`](../internal/filesystemprovision) owns the workload-filesystem transaction. Its Windows backend is constructed from the installed configuration, so native calls cannot expand the target path/SID set. Approved roots retain their existing owner, DACL-protection state, and non-execution principals while receiving exactly one inheritable execution Modify ACE. Dedicated profile/temp roots receive a protected System/Administrators/execution DACL. Same-handle path/descriptor checks, reverse rollback, and transaction-created-leaf ownership are described in [ADR 0009](adr/0009-windows-workload-filesystem-acls.md). The operation does not recursively override protected descendants; effective installed-token access remains a `doctor` and isolated-smoke requirement.
+
 ## Execute-only local broker envelope
 
 The local envelope contract is implemented in [`internal/brokerproto`](../internal/brokerproto), with a schema/example under [`runtime`](../runtime). It contains exactly:

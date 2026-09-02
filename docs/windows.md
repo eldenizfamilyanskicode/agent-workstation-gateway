@@ -1,6 +1,6 @@
 # Windows Implementation and Installation State
 
-Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, and planning mechanisms exist, but account provisioning, rights, service/IPC installation, and installed-host E2E are not complete.
+Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, and workload-ACL mechanisms exist, but mutating installation, service/IPC installation, and installed-host E2E are not complete.
 
 ## Installation input versus installed configuration
 
@@ -39,6 +39,16 @@ Both accounts must have built-in Users as their only reported local group. Contr
 
 The transaction tracks NetAPI's created/not-created result even when a post-create step fails. Closing an uncommitted lease deletes only accounts positively created by that lease, in reverse order, and clears both credentials. Commit preserves accounts and clears credentials. Pre-existing names are never adopted or deleted.
 
+## Workload filesystem boundary
+
+The deterministic dry-run plan includes one `grant_execution_modify` operation for each approved root followed by fixed profile/temp operations. These operations are administrator-local installation policy; they are not accepted by the execute-only broker endpoint.
+
+The native backend is constructed from the validated SID-bound installed configuration and refuses other paths or SIDs. Approved roots must already exist. It opens each root without sharing or reparse traversal, compares the same-handle final path, preserves its owner/DACL protection and other principals, and replaces only direct execution-SID entries with one inheritable Modify ACE. It rejects unsupported ACE forms, conflicting inherited execution ACEs, execution ownership, and relevant broad-principal rights that would either deny the required access or grant ACL management.
+
+Profile/temp leaves require an existing canonical parent. Missing leaves are created with a bounded installer bootstrap ACE long enough to acquire the verified handle, then converged to a protected three-principal DACL: LocalSystem and Administrators receive Windows file Full Access; execution receives Modify without `WRITE_DAC` or `WRITE_OWNER`. Existing leaves are converged through the same handle.
+
+The filesystem lease retains original descriptors only until commit/rollback. Rollback restores existing DACLs and their inheritance-protection state in reverse order, and removes only an empty leaf positively created by the active transaction. It does not recursively rewrite approved-root children. [ADR 0009](adr/0009-windows-workload-filesystem-acls.md) records the exact policy and residual evidence requirements.
+
 ## Fixed protected layout
 
 For an installation root such as `C:\ProgramData\AgentWorkstationGateway`, the product derives rather than accepts these paths:
@@ -66,6 +76,6 @@ No plaintext password is written to the plan, configuration, filesystem, environ
 
 ## Evidence limits
 
-Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, exact ACL descriptor policy, ordinary-parent denial before artifact creation, DPAPI mechanism behavior, and compatibility with the token source's ACL validator.
+Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, protected-state descriptor policy, ordinary-parent denial before artifact creation, DPAPI mechanism behavior, compatibility with the token source's ACL validator, and real temporary-directory workload-ACL convergence/rollback.
 
-They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or execution-account denial. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.
+They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or effective installed execution-account access/denial. The workload-ACL tests use a nonexistent synthetic SID under fresh temporary directories and restore/remove their own state. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA and installed-token evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.
