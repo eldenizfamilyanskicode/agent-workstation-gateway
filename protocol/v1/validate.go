@@ -202,12 +202,24 @@ func validateArtifactSelections(artifacts []ArtifactSelection) error {
 	return nil
 }
 
+// ValidateArtifactSelections applies the standalone artifact request boundary
+// for native collectors that receive an already-authorized launch plan.
+func ValidateArtifactSelections(artifacts []ArtifactSelection) error {
+	return validateArtifactSelections(artifacts)
+}
+
 func validateArtifactPath(artifactPath string) error {
 	return validateRelativeArtifactPath("artifacts.paths", artifactPath, MaxArtifactPathBytes, true)
 }
 
 func validateArtifactFilePath(artifactPath string) error {
 	return validateRelativeArtifactPath("artifacts.files.path", artifactPath, MaxArtifactFilePathBytes, false)
+}
+
+// ValidateArtifactFilePath applies the canonical reported-file path boundary
+// before a native collector adds filesystem-discovered names to a manifest.
+func ValidateArtifactFilePath(artifactPath string) error {
+	return validateArtifactFilePath(artifactPath)
 }
 
 func validateArtifactOmissionPattern(artifactPath string) error {

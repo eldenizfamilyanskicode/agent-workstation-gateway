@@ -41,3 +41,27 @@ func TestMatchRejectsMalformedSegmentGlob(t *testing.T) {
 		t.Fatal("expected malformed glob rejection")
 	}
 }
+
+func TestCouldMatchDescendant(t *testing.T) {
+	tests := []struct {
+		pattern string
+		prefix  string
+		want    bool
+	}{
+		{pattern: "reports/**/*.json", prefix: "reports", want: true},
+		{pattern: "reports/**/*.json", prefix: "reports/nested", want: true},
+		{pattern: "reports/*.json", prefix: "screenshots"},
+		{pattern: "**/*.txt", prefix: ".git", want: true},
+		{pattern: "result.json", prefix: "result.json"},
+		{pattern: "results/**", prefix: "results", want: true},
+	}
+	for _, test := range tests {
+		actual, err := CouldMatchDescendant(test.pattern, test.prefix)
+		if err != nil {
+			t.Fatalf("CouldMatchDescendant(%q, %q): %v", test.pattern, test.prefix, err)
+		}
+		if actual != test.want {
+			t.Fatalf("CouldMatchDescendant(%q, %q)=%t, want %t", test.pattern, test.prefix, actual, test.want)
+		}
+	}
+}

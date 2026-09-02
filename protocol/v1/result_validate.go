@@ -192,6 +192,12 @@ func validateArtifactManifest(manifest ArtifactManifest) error {
 	return nil
 }
 
+// ValidateArtifactManifest applies the standalone result-artifact boundary to
+// a native collection before it is coupled to content handles.
+func ValidateArtifactManifest(manifest ArtifactManifest) error {
+	return validateArtifactManifest(manifest)
+}
+
 func validateArtifactStatusShape(manifest ArtifactManifest) error {
 	switch manifest.Status {
 	case ArtifactStatusNotRequested:

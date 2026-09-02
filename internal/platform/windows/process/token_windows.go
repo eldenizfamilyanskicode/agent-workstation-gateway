@@ -30,3 +30,9 @@ func validateTokenIdentity(token windows.Token, expected installconfig.Principal
 	}
 	return nil
 }
+
+// ValidateTokenIdentity lets other native broker boundaries independently
+// require the configured execution user and primary group on a token lease.
+func ValidateTokenIdentity(token windows.Token, expected installconfig.Principal) error {
+	return validateTokenIdentity(token, expected)
+}
