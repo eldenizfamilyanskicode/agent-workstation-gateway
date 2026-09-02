@@ -146,9 +146,11 @@ The workstation produces a strict non-authoritative `ExecutionReport`. It cannot
 
 [`internal/platform/windows/process`](../internal/platform/windows/process) implements the native launcher required by the shared lifecycle. It has no `os/exec` or current-user fallback. A broker token source must supply a lease for the configured execution identity, and the launcher independently requires both token user and primary-group SIDs to match the authorized principal.
 
+The file-backed token source is fixed to one local execution account and protected absolute credential path. It validates the file final path and SYSTEM/Administrators-only protected DACL through the same native handle, then uses machine-scoped/no-UI DPAPI, batch-only `LogonUserW`, and `LoadUserProfileW`. Plaintext byte and UTF-16 buffers are bounded and cleared after use; the lease unloads the profile before closing the token. Machine-scoped DPAPI is not an identity boundary, so a bad credential-file ACL is a closed failure. [ADR 0007](adr/0007-windows-protected-batch-token-source.md) records this decision and its evidence limits.
+
 The launcher re-resolves the approved working directory near launch, builds a Unicode environment from only sanitized entries, and limits inherited handles to the child ends of stdin/stdout/stderr using an extended startup handle list. It calls `CreateProcessAsUserW` suspended, assigns the process to a kill-on-close Job Object, then resumes it. Script bytes flow only through stdin. Normal completion, timeout, and cancellation all reap the full Job Object before the shared lifecycle receives a terminal signal. [ADR 0006](adr/0006-windows-restricted-process-and-job-boundary.md) records the detailed decision.
 
-Local Windows tests exercised actual Job Object termination of a test process and its descendant. This proves the native lifecycle primitive, not the installed identity boundary. The protected logon secret/token source, profile lifecycle, LocalSystem service, and dedicated-account ACL denial remain unimplemented and require isolated E2E evidence.
+Local Windows tests exercised actual Job Object termination of a test process and its descendant, real DPAPI round-trip/tamper rejection, ACL policy parsing and ordinary-file denial, and a real failed batch logon for a synthetic nonexistent account. These prove native mechanisms, not the installed identity boundary. Account provisioning, successful LocalSystem-to-execution-account logon/profile/process launch, service lifecycle, and dedicated-account ACL denial remain unimplemented and require isolated E2E evidence.
 
 ## Native enforcement still required
 
@@ -158,7 +160,7 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 |---|---|---|
 | Broker service | LocalSystem Windows service | root-owned hardened systemd service |
 | Peer authentication | explicit named-pipe DACL, remote-client rejection, impersonated caller SID verification, mandatory revert | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
-| Identity transition | protected batch-logon token source/profile lifecycle (the token-validating `CreateProcessAsUserW` launcher is implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
+| Identity transition | installer-created account/logon right and installed LocalSystem E2E (the protected batch token source/profile lease and token-validating launcher are implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
 | Filesystem | near-launch final-path recheck and ACL denial (the authorization resolver is implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | installed-token E2E remains (Job Object ownership/termination is implemented and native-tested) | process group/session with TERM grace then KILL |
 | Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |

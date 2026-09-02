@@ -201,7 +201,7 @@ The security consequence is explicit: a memory-safety or logic vulnerability in 
 
 ### Execution account and token
 
-The installer/broker provisions a dedicated local standard account for `awg-exec`.
+The installer/broker provisions a dedicated local standard account for `awg-exec`. [ADR 0007](0007-windows-protected-batch-token-source.md) supersedes the DPAPI scope and protected-file details in steps 4–6 below; the other identity requirements remain in force.
 
 For the initial implementation:
 

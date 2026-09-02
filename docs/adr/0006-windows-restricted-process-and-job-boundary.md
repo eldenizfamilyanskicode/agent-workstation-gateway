@@ -42,9 +42,9 @@ The process owner treats the entire Job Object as one attempt:
 
 ## Token lease boundary
 
-`TokenSource` and `TokenLease` are deliberately narrow. The future installed LocalSystem broker owns protected credential retrieval, `LogonUserW`, profile loading, and lease cleanup. Request fields cannot select a username, SID, credential, logon type, or token.
+`TokenSource` and `TokenLease` are deliberately narrow. The file-backed Windows source now owns protected credential retrieval, batch-only `LogonUserW`, profile loading, and lease cleanup as recorded in [ADR 0007](0007-windows-protected-batch-token-source.md). Request fields cannot select a username, SID, credential, logon type, or token.
 
-The lease remains live until the whole process tree is reaped so a later profile-owning implementation can unload profile state only after processes stop. The launcher independently checks token SIDs even when the source claims it returned the right identity.
+The lease remains live until the whole process tree is reaped, then unloads profile state before closing the token. The launcher independently checks token SIDs even when the source claims it returned the right identity.
 
 ## Alternatives considered
 
@@ -72,7 +72,7 @@ Rejected. Descendants may retain files, credentials, network access, or mutation
 
 Native Windows tests exercise SID comparison, command/environment construction, inherited-handle policy construction, and real Job Object termination of a root process plus descendant. Hosted Windows tests compile and run those mechanisms.
 
-Those tests do not yet prove that an installed LocalSystem service can log on the dedicated execution account, load its profile, or launch with its token. They also do not prove ACL denial of control credentials. That evidence requires installer-created accounts/ACLs and isolated real-host E2E.
+Separate token-source tests exercise real machine-scoped DPAPI round-trip/tamper rejection, protected-DACL policy, and negative batch logon. They do not yet prove that an installed LocalSystem service can log on the dedicated execution account, load its profile, or launch with its token. They also do not prove installer-created ACL denial of control credentials. That evidence requires installer-created accounts/ACLs and isolated real-host E2E.
 
 The base implementation remains cgo-free and uses the `golang.org/x/sys/windows` dependency accepted by ADR 0005.
 

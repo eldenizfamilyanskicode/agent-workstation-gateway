@@ -120,10 +120,11 @@ Completed foundation work:
 - shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
 - Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
 - Windows mandatory-token `CreateProcessAsUserW` and Job Object process-tree implementation (without installed-account/service E2E claims).
+- Windows machine-protected credential file and fixed-account batch-logon/profile token source (without installer-created-account success claims).
 
 Not implemented yet at this checkpoint:
 
-- Go CLI/control/broker executables and native IPC, identity transition, path resolution, process-tree ownership, and artifact filesystem/runtime implementation;
+- Go CLI/control/broker executables, native IPC, artifact filesystem/runtime implementation, and remaining installed-host integration;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
@@ -144,6 +145,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0004 — Apache License 2.0`](docs/adr/0004-apache-2.0-license.md)
 - [`ADR 0005 — Windows Native Path Resolution`](docs/adr/0005-windows-native-path-resolution.md)
 - [`ADR 0006 — Windows Restricted Process and Job Boundary`](docs/adr/0006-windows-restricted-process-and-job-boundary.md)
+- [`ADR 0007 — Windows Protected Batch Token Source`](docs/adr/0007-windows-protected-batch-token-source.md)
 
 ## Contributing and security
 
