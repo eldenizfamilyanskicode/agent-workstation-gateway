@@ -10,14 +10,18 @@ func MarshalCanonicalRequest(request Request) ([]byte, error) {
 	if err := ValidateRequest(request); err != nil {
 		return nil, err
 	}
-	encodedRequest, err := json.Marshal(request)
+	return marshalCanonicalRecord(request, MaxRequestBytes, "request")
+}
+
+func marshalCanonicalRecord(record any, maximumBytes int, field string) ([]byte, error) {
+	encodedRecord, err := json.Marshal(record)
 	if err != nil {
-		return nil, decodeError("canonical-encode")
+		return nil, decodeError(field, "canonical-encode")
 	}
-	if len(encodedRequest) > MaxRequestBytes {
-		return nil, validationError("request", "canonical-size-limit")
+	if len(encodedRecord) > maximumBytes {
+		return nil, validationError(field, "canonical-size-limit")
 	}
-	return encodedRequest, nil
+	return encodedRecord, nil
 }
 
 func DigestRequest(request Request) (string, error) {
@@ -25,6 +29,10 @@ func DigestRequest(request Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256(encodedRequest)
-	return hex.EncodeToString(digest[:]), nil
+	return digestCanonicalBytes(encodedRequest), nil
+}
+
+func digestCanonicalBytes(encodedRecord []byte) string {
+	digest := sha256.Sum256(encodedRecord)
+	return hex.EncodeToString(digest[:])
 }

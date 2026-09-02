@@ -203,29 +203,45 @@ func validateArtifactSelections(artifacts []ArtifactSelection) error {
 }
 
 func validateArtifactPath(artifactPath string) error {
-	if !utf8.ValidString(artifactPath) || len(artifactPath) == 0 || len(artifactPath) > MaxArtifactPathBytes {
-		return validationError("artifacts.paths", "invalid-size-or-encoding")
+	return validateRelativeArtifactPath("artifacts.paths", artifactPath, MaxArtifactPathBytes, true)
+}
+
+func validateArtifactFilePath(artifactPath string) error {
+	return validateRelativeArtifactPath("artifacts.files.path", artifactPath, MaxArtifactFilePathBytes, false)
+}
+
+func validateArtifactOmissionPattern(artifactPath string) error {
+	return validateRelativeArtifactPath("artifacts.omissions.pattern", artifactPath, MaxArtifactPathBytes, true)
+}
+
+func validateRelativeArtifactPath(field string, artifactPath string, maximumBytes int, allowGlob bool) error {
+	if !utf8.ValidString(artifactPath) || len(artifactPath) == 0 || len(artifactPath) > maximumBytes {
+		return validationError(field, "invalid-size-or-encoding")
 	}
 	if strings.HasPrefix(artifactPath, "/") || strings.ContainsAny(artifactPath, "\\:\x00") {
-		return validationError("artifacts.paths", "not-safe-relative-path")
+		return validationError(field, "not-safe-relative-path")
 	}
-	if _, err := path.Match(artifactPath, "synthetic/path"); err != nil {
-		return validationError("artifacts.paths", "invalid-glob-syntax")
+	if allowGlob {
+		if _, err := path.Match(artifactPath, "synthetic/path"); err != nil {
+			return validationError(field, "invalid-glob-syntax")
+		}
+	} else if strings.ContainsAny(artifactPath, "*?[") {
+		return validationError(field, "glob-in-file-path")
 	}
 	segments := strings.Split(artifactPath, "/")
 	for _, segment := range segments {
 		if segment == "" || segment == "." || segment == ".." {
-			return validationError("artifacts.paths", "non-canonical-segment")
+			return validationError(field, "non-canonical-segment")
 		}
 		if containsControlCharacter(segment) {
-			return validationError("artifacts.paths", "contains-control-character")
+			return validationError(field, "contains-control-character")
 		}
 		lowerSegment := strings.ToLower(segment)
 		if _, forbidden := forbiddenArtifactSegments[lowerSegment]; forbidden {
-			return validationError("artifacts.paths", "sensitive-segment")
+			return validationError(field, "sensitive-segment")
 		}
 		if lowerSegment == ".env" || strings.HasPrefix(lowerSegment, ".env.") {
-			return validationError("artifacts.paths", "sensitive-segment")
+			return validationError(field, "sensitive-segment")
 		}
 	}
 	return nil

@@ -19,8 +19,8 @@ func (protocolError *ProtocolError) Error() string {
 	return fmt.Sprintf("protocol %s failed for %s: %s", protocolError.Kind, protocolError.Field, protocolError.Rule)
 }
 
-func decodeError(rule string) error {
-	return &ProtocolError{Kind: ErrorKindDecode, Field: "request", Rule: rule}
+func decodeError(field string, rule string) error {
+	return &ProtocolError{Kind: ErrorKindDecode, Field: field, Rule: rule}
 }
 
 func validationError(field string, rule string) error {

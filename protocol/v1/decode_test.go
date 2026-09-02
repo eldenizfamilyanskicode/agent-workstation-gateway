@@ -18,7 +18,7 @@ func TestDecodeRequestRejectsInvalidJSONBoundaries(t *testing.T) {
 		{name: "malformed", body: []byte(`{"protocol_version":`), rule: "malformed-json"},
 		{name: "invalid utf8", body: []byte{'{', '"', 'x', '"', ':', '"', 0xff, '"', '}'}, rule: "invalid-utf8"},
 		{name: "trailing value", body: append(append([]byte{}, validJSON...), []byte(" {}")...), rule: "trailing-json"},
-		{name: "oversized", body: []byte(`{"padding":"` + strings.Repeat("x", MaxRequestBytes) + `"}`), rule: "request-too-large"},
+		{name: "oversized", body: []byte(`{"padding":"` + strings.Repeat("x", MaxRequestBytes) + `"}`), rule: "record-too-large"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
