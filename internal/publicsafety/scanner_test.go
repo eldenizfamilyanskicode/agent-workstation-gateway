@@ -84,13 +84,33 @@ func TestScanOperatorSuppliedPrivateValues(t *testing.T) {
 }
 
 func TestScanWorkflowSafety(t *testing.T) {
+	pinnedCheckout := "actions/checkout@" + strings.Repeat("a", 40)
+	safe := "name: Synthetic CI\non:\n  push:\npermissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: " + pinnedCheckout + "\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n"
+
+	t.Run("safe hosted workflow", func(t *testing.T) {
+		repo := newSyntheticRepo(t)
+		writeSyntheticFile(t, repo, ".github/workflows/test.yml", safe)
+		gitSynthetic(t, repo, "add", ".github/workflows/test.yml")
+		findings := mustScan(t, Options{Repo: repo, Scope: ScopeStaged})
+		if len(findings) != 0 {
+			t.Fatalf("expected safe workflow, got %#v", findings)
+		}
+	})
+
 	tests := []struct {
 		name string
 		body string
 		rule string
 	}{
-		{name: "self hosted", body: "jobs:\n  test:\n    runs-on: self-hosted\n", rule: "workflow-self-hosted"},
-		{name: "pull request target", body: "on:\n  pull_request_target:\n", rule: "workflow-pull-request-target"},
+		{name: "self hosted", body: safe + "# self-hosted\n", rule: "workflow-self-hosted"},
+		{name: "pull request target", body: safe + "# pull_request_target\n", rule: "workflow-pull-request-target"},
+		{name: "custom runner", body: strings.Replace(safe, "runs-on: ubuntu-latest", "runs-on: synthetic-runner", 1), rule: "workflow-runner-not-allowlisted"},
+		{name: "unpinned action", body: strings.Replace(safe, pinnedCheckout, "actions/checkout@v7", 1), rule: "workflow-unpinned-action"},
+		{name: "missing permissions", body: strings.Replace(safe, "permissions:\n  contents: read\n", "", 1), rule: "workflow-missing-permissions"},
+		{name: "write permission", body: strings.Replace(safe, "contents: read", "contents: write", 1), rule: "workflow-write-permission"},
+		{name: "secret reference", body: safe + "# ${{ secrets.SYNTHETIC_VALUE }}\n", rule: "workflow-secret-reference"},
+		{name: "persisted checkout credential", body: strings.Replace(safe, "          persist-credentials: false\n", "", 1), rule: "workflow-checkout-persists-credentials"},
+		{name: "shallow checkout", body: strings.Replace(safe, "          fetch-depth: 0\n", "", 1), rule: "workflow-checkout-shallow-history"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -102,7 +122,6 @@ func TestScanWorkflowSafety(t *testing.T) {
 		})
 	}
 }
-
 func TestInvalidOperatorRegexDoesNotEchoPattern(t *testing.T) {
 	repo := newSyntheticRepo(t)
 	privatePattern := strings.Join([]string{"ALICE-PRIVATE", "-["}, "")

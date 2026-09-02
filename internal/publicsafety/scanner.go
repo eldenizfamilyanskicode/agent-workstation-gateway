@@ -343,15 +343,157 @@ func scanPrivateData(options compiledOptions, scope Scope, path, revision string
 func scanWorkflow(scope Scope, path, revision string, data []byte) []Finding {
 	lower := bytes.ToLower(data)
 	var findings []Finding
+	add := func(rule string) {
+		findings = append(findings, Finding{Scope: scope, Rule: rule, Path: path, Revision: revision})
+	}
 	if bytes.Contains(lower, []byte("self-hosted")) {
-		findings = append(findings, Finding{Scope: scope, Rule: "workflow-self-hosted", Path: path, Revision: revision})
+		add("workflow-self-hosted")
 	}
 	if bytes.Contains(lower, []byte("pull_request_target")) {
-		findings = append(findings, Finding{Scope: scope, Rule: "workflow-pull-request-target", Path: path, Revision: revision})
+		add("workflow-pull-request-target")
+	}
+	if bytes.Contains(lower, []byte("${{ secrets.")) {
+		add("workflow-secret-reference")
+	}
+
+	lines := strings.Split(string(data), "\n")
+	hasTopLevelPermissions := false
+	hasTopLevelContentsRead := false
+	permissionIndent := -1
+	checkoutCount := 0
+	persistCredentialsFalse := 0
+	fetchDepthZero := 0
+	runnerCount := 0
+
+	for _, rawLine := range lines {
+		rawLine = strings.TrimSuffix(rawLine, "\r")
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indent := len(rawLine) - len(strings.TrimLeft(rawLine, " \t"))
+		clean := stripWorkflowComment(trimmed)
+		lowerClean := strings.ToLower(clean)
+
+		if permissionIndent >= 0 && indent <= permissionIndent {
+			permissionIndent = -1
+		}
+		if strings.HasPrefix(lowerClean, "permissions:") {
+			value := strings.TrimSpace(clean[len("permissions:"):])
+			if indent == 0 {
+				hasTopLevelPermissions = true
+			}
+			if value == "" {
+				permissionIndent = indent
+			} else if strings.EqualFold(value, "write-all") {
+				add("workflow-write-permission")
+			}
+			continue
+		}
+		if permissionIndent >= 0 && indent > permissionIndent {
+			key, value, ok := workflowKeyValue(clean)
+			if ok {
+				if permissionIndent == 0 && strings.EqualFold(key, "contents") && strings.EqualFold(value, "read") {
+					hasTopLevelContentsRead = true
+				}
+				if strings.EqualFold(value, "write") || strings.EqualFold(value, "write-all") {
+					add("workflow-write-permission")
+				}
+			}
+		}
+
+		if value, ok := workflowScalar(clean, "runs-on"); ok {
+			runnerCount++
+			if value != "ubuntu-latest" && value != "windows-latest" {
+				add("workflow-runner-not-allowlisted")
+			}
+		}
+		if value, ok := workflowUses(clean); ok {
+			if strings.HasPrefix(strings.ToLower(value), "actions/checkout@") {
+				checkoutCount++
+			}
+			if !workflowActionPinned(value) {
+				add("workflow-unpinned-action")
+			}
+		}
+		if value, ok := workflowScalar(clean, "persist-credentials"); ok && strings.EqualFold(value, "false") {
+			persistCredentialsFalse++
+		}
+		if value, ok := workflowScalar(clean, "fetch-depth"); ok && value == "0" {
+			fetchDepthZero++
+		}
+	}
+
+	if !hasTopLevelPermissions {
+		add("workflow-missing-permissions")
+	} else if !hasTopLevelContentsRead {
+		add("workflow-missing-contents-read")
+	}
+	if runnerCount == 0 {
+		add("workflow-missing-hosted-runner")
+	}
+	if persistCredentialsFalse < checkoutCount {
+		add("workflow-checkout-persists-credentials")
+	}
+	if fetchDepthZero < checkoutCount {
+		add("workflow-checkout-shallow-history")
 	}
 	return findings
 }
 
+func stripWorkflowComment(line string) string {
+	if index := strings.Index(line, " #"); index >= 0 {
+		line = line[:index]
+	}
+	return strings.TrimSpace(line)
+}
+
+func workflowScalar(line, key string) (string, bool) {
+	prefix := strings.ToLower(key) + ":"
+	if !strings.HasPrefix(strings.ToLower(line), prefix) {
+		return "", false
+	}
+	value := strings.TrimSpace(line[len(prefix):])
+	value = strings.Trim(value, "'\"")
+	return value, true
+}
+
+func workflowKeyValue(line string) (string, string, bool) {
+	key, value, ok := strings.Cut(line, ":")
+	if !ok {
+		return "", "", false
+	}
+	return strings.TrimSpace(key), strings.Trim(strings.TrimSpace(value), "'\""), true
+}
+
+func workflowUses(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "-") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+	}
+	value, ok := workflowScalar(line, "uses")
+	return value, ok
+}
+
+func workflowActionPinned(value string) bool {
+	if strings.HasPrefix(value, "./") {
+		return true
+	}
+	separator := strings.LastIndex(value, "@")
+	if separator < 1 || separator == len(value)-1 {
+		return false
+	}
+	revision := value[separator+1:]
+	if len(revision) != 40 {
+		return false
+	}
+	for _, char := range revision {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
 func forbiddenPathRule(path string) string {
 	normalized := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
 	padded := "/" + strings.TrimPrefix(normalized, "/")

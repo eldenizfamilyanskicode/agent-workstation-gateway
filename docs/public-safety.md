@@ -52,6 +52,7 @@ The scanner currently fails closed on:
 - operator-provided literal/regex matches in paths, file contents, and reachable commit metadata;
 - active `.github/workflows/*.yml` or `.yaml` files containing a `self-hosted` runner route;
 - active public workflow files containing a `pull_request_target` trigger;
+- active workflows using non-allowlisted runner labels, mutable action refs, secret references, write permissions, persisted checkout credentials, or shallow checkout history;
 - tracked or historical blobs larger than 8 MiB, because they are not silently skipped.
 
 Tracked symlinks are inspected as link targets rather than followed into the host filesystem.
