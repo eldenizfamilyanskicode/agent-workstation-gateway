@@ -127,7 +127,7 @@ A user may clone or download public source. Public content is input to an instal
 
 ### Private control requests
 
-Authorized actors write immutable request material to a **private** control repository. The control plane validates protocol fields and policy before launching anything locally.
+Authorized actors submit bounded request data through a **private** control-repository transport. Trusted control code materializes the authoritative request state and validates protocol fields and policy before launching anything locally. Request submission does not itself grant local gateway-management credentials.
 
 ### Local workload launch
 
