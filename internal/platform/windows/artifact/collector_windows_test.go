@@ -301,7 +301,14 @@ func TestCollectorRejectsCanceledAndMismatchedTokenPlans(t *testing.T) {
 
 func testCollector(t *testing.T, selections []v1.ArtifactSelection) (*Collector, executionrun.ArtifactPlan) {
 	t.Helper()
-	root := t.TempDir()
+	rawRoot := t.TempDir()
+	rootHandle, root, err := openVerifiedDirectory(rawRoot)
+	if err != nil {
+		t.Fatalf("resolve temporary root: %v", err)
+	}
+	if err := windows.CloseHandle(rootHandle); err != nil {
+		t.Fatalf("close temporary root handle: %v", err)
+	}
 	working := filepath.Join(root, "work")
 	if err := os.Mkdir(working, 0o700); err != nil {
 		t.Fatalf("mkdir working: %v", err)
