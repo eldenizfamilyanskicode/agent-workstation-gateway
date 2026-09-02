@@ -1,11 +1,12 @@
 # Protocol v1 Contracts
 
-This document defines the implemented Agent Workstation Gateway protocol v1 request, accepted-request ledger, and authoritative result records.
+This document defines the implemented Agent Workstation Gateway protocol v1 request, accepted-request ledger, non-authoritative execution report, and authoritative result records.
 
 The public machine-readable contracts are:
 
 - [`request.schema.json`](../protocol/schemas/v1/request.schema.json);
 - [`accepted-request.schema.json`](../protocol/schemas/v1/accepted-request.schema.json);
+- [`execution-report.schema.json`](../protocol/schemas/v1/execution-report.schema.json);
 - [`result.schema.json`](../protocol/schemas/v1/result.schema.json).
 
 The Go implementation is [`protocol/v1`](../protocol/v1). Mutually bound synthetic examples are in [`protocol/examples/v1`](../protocol/examples/v1).
@@ -31,7 +32,7 @@ The request contract validates syntax and platform-neutral meaning. It does not 
 
 ## Encoding and envelope limits
 
-Each record is exactly one UTF-8 JSON object. Encoded limits are 65,536 bytes for a request, 131,072 bytes for an accepted-request record, and 262,144 bytes for a result record.
+Each record is exactly one UTF-8 JSON object. Encoded limits are 65,536 bytes for a request, 131,072 bytes for an accepted-request record, and 262,144 bytes each for an execution report or result record.
 
 - A UTF-8 byte-order mark is not accepted as JSON syntax.
 - Invalid UTF-8 is rejected rather than replaced.
@@ -53,7 +54,7 @@ The JSON Schema provides a portable structural preflight. The Go implementation 
 | `working_directory` | string | Canonical absolute Windows drive path or canonical absolute POSIX path; at most 1,024 UTF-8 bytes. This is a requested location, not authorization. |
 | `script` | string | Non-whitespace inline script, 1–49,152 UTF-8 bytes, with no NUL. It remains data until the restricted execution launch. |
 | `timeout_seconds` | integer | 1–86,400 inclusive. |
-| `max_output_bytes` | integer | 1,024–5,242,880 inclusive, per the later output-capture contract. |
+| `max_output_bytes` | integer | 1,024–5,242,880 inclusive; the retained-prefix limit for each output stream. |
 | `artifacts` | array | Zero to eight artifact-selection groups. Must be `[]`, not `null`, when unused. |
 
 All identifiers are case-sensitive. Protocol validation does not infer actor authority from the `actor` string; the private control transport binds the accepted request to sender metadata from the immutable opened-event snapshot.
@@ -153,6 +154,14 @@ Compare-and-create behavior is part of the transport contract:
 - the same ID with a different digest is a conflict and fails closed;
 - the accepted record is never rewritten to represent retries.
 
+## Non-authoritative execution report
+
+The workstation produces an `ExecutionReport` containing the accepted request ID/digest, stable attempt ID, installed gateway source SHA, command status, timing, full-stream output metadata, and independent artifact manifest. Its strict field set has no `finalized_at` or `workflow`: requester/workload/workstation data cannot claim that hosted finalization happened or choose its publication provenance.
+
+The report binds to `accepted.json` before finalization. The binding requires identical request ID/digest, retained stdout/stderr prefixes within the accepted per-stream limit, and artifact groups/status consistent with the accepted selections. The report is proposed terminal evidence, not the durable authoritative ledger record.
+
+`FinalizeResultRecord` is the typed hosted boundary. It accepts a valid accepted record and bound execution report, then requires the finalizer to supply a canonical UTC finalization timestamp and workflow provenance matching the acceptance run (a later rerun attempt is allowed). Only the resulting `ResultRecord` is eligible for create-once publication.
+
 ## Authoritative result record
 
 The terminal result has one fixed private-control ledger path:
@@ -166,7 +175,7 @@ A result record contains the accepted request ID/digest, a stable execution atte
 Standalone result validation proves the record's shape and internal invariants. Before publication, the finalizer must also validate it against `accepted.json`. The implemented binding check requires:
 
 - identical request ID and canonical request digest;
-- stdout and stderr totals no larger than the request's accepted per-stream output limit;
+- stdout and stderr retained prefixes no larger than the request's accepted per-stream output limit;
 - `not_requested` artifacts exactly when the accepted request has no artifact groups;
 - every returned file or omission to name an accepted artifact group;
 - the same private repository, workflow run ID, event, and workflow source SHA as acceptance.
@@ -194,8 +203,8 @@ Command outcome is a closed state independent of artifact collection:
 | Field | Contract |
 |---|---|
 | `sha256` | 64 lowercase hex characters for the complete observed stream. |
-| `total_bytes` | Complete observed byte count, bounded by both the protocol maximum and accepted request limit. |
-| `retained_bytes` | Bytes retained for return; never greater than `total_bytes`. |
+| `total_bytes` | Complete observed byte count. It can exceed the retained-prefix limit. |
+| `retained_bytes` | Prefix bytes retained for return; never greater than `total_bytes` or the accepted request limit. |
 | `truncated` | `true` exactly when some observed bytes were not retained. |
 
 The ledger record does not embed output bytes. The execution/finalization handoff may carry bounded retained bytes as data, while the metadata keeps truncation explicit. A false `truncated` flag requires all observed bytes to have been retained.
@@ -244,9 +253,9 @@ Actions logs and transient cross-job artifacts are supporting transport evidence
 
 ## Canonical ledger encoding
 
-Accepted and result records use the same typed fixed-order JSON canonicalization as requests: no insignificant whitespace, no dropped/defaulted fields, and SHA-256 over the resulting bytes when a record digest is needed. Canonical encoding revalidates semantics and enforces the record-specific encoded limit even for programmatically constructed values.
+Accepted records, execution reports, and result records use the same typed fixed-order JSON canonicalization as requests: no insignificant whitespace, no dropped/defaulted fields, and SHA-256 over the resulting bytes when a record digest is needed. Canonical encoding revalidates semantics and enforces the record-specific encoded limit even for programmatically constructed values.
 
-The canonical request digest inside `accepted.json` and `result.json` always identifies the request bytes, not the formatting of either ledger record. `DigestAcceptedRequestRecord` and `DigestResultRecord` are available for audit/integrity uses but do not replace control-owned compare-and-create publication.
+The canonical request digest inside `accepted.json`, an execution report, and `result.json` always identifies the request bytes, not the formatting of another record. `DigestAcceptedRequestRecord`, `DigestExecutionReport`, and `DigestResultRecord` are available for audit/integrity uses but do not replace control-owned compare-and-create publication.
 
 ## Versioning and compatibility
 

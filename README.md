@@ -1,6 +1,6 @@
 # Agent Workstation Gateway
 
-> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, hosted CI, and protocol v1 request/ledger/result contracts exist. The gateway runtime, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
+> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, hosted CI, protocol v1 records, and shared execution orchestration exist. Native security boundaries, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
 
 Agent Workstation Gateway (AWG) is a vendor-neutral gateway for letting a **trusted AI/development agent** request bounded work on a user's workstation while keeping public source code separate from workstation execution authority.
 
@@ -113,12 +113,15 @@ Completed foundation work:
 - local public/workflow safety scanner with reachable-history checks;
 - hosted-only public CI verified on GitHub's Windows and Linux runner pools;
 - strict protocol v1 request schema, Go codec/validation, canonicalization, and digest;
-- strict protocol v1 accepted-request/result schemas, provenance and binding validation, failure semantics, and bounded output/artifact metadata;
-- shared strict installation configuration, execute-only broker envelope, clean-environment builder, and fail-closed launch-policy core (without native execution claims).
+- strict protocol v1 accepted-request, non-authoritative execution-report, and authoritative-result schemas with provenance/binding validation and independent command/artifact outcomes;
+- shared strict installation configuration, execute-only broker envelope, clean-environment builder, and fail-closed launch-policy core;
+- closed shell startup plans that carry arbitrary script content only as stdin data;
+- concurrent full-stream output hashing/counting with bounded retained prefixes;
+- shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
 
 Not implemented yet at this checkpoint:
 
-- Go CLI/control/broker executables and native IPC, identity transition, path resolution, process lifecycle, output, and artifact runtime;
+- Go CLI/control/broker executables and native IPC, identity transition, path resolution, process-tree ownership, and artifact filesystem/runtime implementation;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;

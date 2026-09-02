@@ -37,6 +37,8 @@ jobs:
         run: go vet ./...
       - name: Test packages
         run: go test ./... -count=1
+      - name: Race-test packages
+        run: go test -race ./... -count=1
       - name: Build packages
         run: go build ./...
       - name: Scan public tree and history

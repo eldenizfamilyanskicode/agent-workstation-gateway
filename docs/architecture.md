@@ -1,6 +1,6 @@
 # Secure Execution Architecture
 
-This document describes the implemented shared execution-policy core and the native Windows/Linux mechanisms still required before Agent Workstation Gateway can execute a request securely. The repository remains pre-alpha and does not yet contain a usable broker service.
+This document describes the implemented shared execution-policy/lifecycle core and the native Windows/Linux mechanisms still required before Agent Workstation Gateway can execute a request securely. The repository remains pre-alpha and does not yet contain a usable broker service.
 
 ## Authority path
 
@@ -126,6 +126,18 @@ The launch policy therefore requires a native resolver. Its contract is to:
 
 The shared policy independently checks that returned paths are canonical, that the root is configured, and that the directory is segment-contained. A mock resolver proves only shared orchestration behavior. It is not Windows or Linux filesystem-boundary evidence.
 
+## Closed shell invocation and shared lifecycle
+
+[`internal/shellinvoke`](../internal/shellinvoke) maps only the five protocol shell values to fixed startup argument vectors. Bash variants use `--noprofile --norc -s`, PowerShell variants use `-NoLogo -NoProfile -NonInteractive -Command -`, and `cmd.exe` uses `/D /Q`. In every case, the arbitrary requester script is exposed to the native launcher only as stdin data. It is never concatenated into a trusted command string, executable path, or argument.
+
+[`internal/executionrun`](../internal/executionrun) orchestrates an authorized plan, but deliberately has no `os/exec` fallback. Its required launcher interface must start under the fixed execution identity and own the complete native process tree. A normal exit signal means that tree has been reaped; timeout or cancellation calls synchronous whole-tree termination. Failure to terminate is reported as `runtime_failed`, and artifact collection is skipped because the workload may still be live.
+
+The shared runner distinguishes completed, nonzero exit, runtime failure, timeout, and cancellation. [`internal/outputcapture`](../internal/outputcapture) concurrently hashes and counts every observed stdout/stderr byte while retaining only the accepted per-stream prefix. Returned retained byte slices are separate from the execution-report metadata and are never embedded in the durable ledger record.
+
+Artifact collection is a separate injected native boundary. Its plan contains only the fixed execution identity, resolved working directory, and accepted selections—not the script, shell arguments, or environment. Collector failure becomes explicit `collection_failed` omissions without overwriting the command outcome. Native enumeration, link/reparse rejection, byte transport, and reads under the execution identity remain unimplemented.
+
+The workstation produces a strict non-authoritative `ExecutionReport`. It cannot contain hosted `finalized_at` or workflow provenance. [`protocol/v1`](../protocol/v1) can form an authoritative `ResultRecord` only when a finalizer supplies a valid accepted record, a bound report, canonical finalization time, and matching hosted workflow provenance.
+
 ## Native enforcement still required
 
 The following mechanisms are not implemented by this checkpoint and remain release blockers:
@@ -137,9 +149,9 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 | Identity transition | broker-only protected batch-logon secret, `LogonUserW`, profile/token lifecycle, `CreateProcessAsUserW` | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
 | Filesystem | native final-path/reparse checks reinforced by ACL denial | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | Job Object tree ownership and termination | process group/session with TERM grace then KILL |
-| Result data | bounded output/artifacts accessed under execution authority | bounded output/artifacts accessed under execution authority |
+| Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
 
-Hosted Windows/Linux unit tests demonstrate parser, configuration, environment, and shared fail-closed policy behavior. They cannot demonstrate the native rows above. Those claims require isolated real-host tests under the actual dedicated identities.
+Hosted Windows/Linux unit tests demonstrate parser, configuration, environment, bounded-capture, and shared fail-closed lifecycle behavior. Fake launchers, processes, timers, resolvers, and collectors are orchestration evidence only. They cannot demonstrate the native rows above; those claims require isolated real-host tests under the actual dedicated identities.
 
 ## Security consequences
 
