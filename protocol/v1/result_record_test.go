@@ -121,6 +121,9 @@ func TestResultRecordRoundTripDigestAndStrictDecoding(t *testing.T) {
 	if strings.Contains(err.Error(), privateMarker) {
 		t.Fatalf("result decode error echoed private field: %q", err)
 	}
+	caseVariant := strings.Replace(string(encoded), `"attempt_id":`, `"ATTEMPT_ID":`, 1)
+	_, err = DecodeResultRecord([]byte(caseVariant))
+	assertProtocolError(t, err, ErrorKindDecode, "result", "schema-decode")
 
 	duplicate := strings.Replace(string(encoded), `"attempt_id":"attempt-000001"`, `"attempt_id":"attempt-000001","attempt_id":"attempt-000002"`, 1)
 	_, err = DecodeResultRecord([]byte(duplicate))

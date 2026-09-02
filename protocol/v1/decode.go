@@ -73,6 +73,20 @@ func requireJSONFieldsForType(encodedJSON json.RawMessage, valueType reflect.Typ
 		if err := json.Unmarshal(encodedJSON, &object); err != nil || object == nil {
 			return nil
 		}
+		knownNames := make(map[string]struct{}, valueType.NumField())
+		for fieldIndex := 0; fieldIndex < valueType.NumField(); fieldIndex++ {
+			structField := valueType.Field(fieldIndex)
+			jsonName := strings.Split(structField.Tag.Get("json"), ",")[0]
+			if jsonName == "" || jsonName == "-" {
+				continue
+			}
+			knownNames[jsonName] = struct{}{}
+		}
+		for jsonName := range object {
+			if _, known := knownNames[jsonName]; !known {
+				return decodeError(field, "schema-decode")
+			}
+		}
 		for fieldIndex := 0; fieldIndex < valueType.NumField(); fieldIndex++ {
 			structField := valueType.Field(fieldIndex)
 			jsonName := strings.Split(structField.Tag.Get("json"), ",")[0]
