@@ -53,4 +53,3 @@ The wire package does not choose a filesystem destination or upload service. A l
 - The manifest order is protocol-significant for the local stream.
 - There is no resume within a connection. A broken response must be discarded; higher-level retry policy must not silently execute a new attempt under the same terminal identity.
 - The contract does not implement authenticated IPC, the broker execution loop, a control-side filesystem sink, GitHub upload, hosted finalization, or service lifecycle. Those remain separate authority boundaries.
-
