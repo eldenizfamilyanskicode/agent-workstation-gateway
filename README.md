@@ -121,6 +121,7 @@ Completed foundation work:
 - Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
 - Windows mandatory-token `CreateProcessAsUserW` and Job Object process-tree implementation (without installed-account/service E2E claims).
 - Windows machine-protected credential file and fixed-account batch-logon/profile token source (without installer-created-account success claims).
+- strict Windows install specification, mutation-free `awg install --dry-run`, and native protected broker-state materializer (not yet wired to mutating account/service installation).
 
 Not implemented yet at this checkpoint:
 

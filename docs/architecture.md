@@ -55,6 +55,14 @@ The only currently declared optional powerful capability is `docker`. Merely lis
 
 The decoder validates configuration content. It does not prove file ownership or permissions. Native installation/service startup must load it from protected administrator-owned storage that neither control nor execution identity can modify.
 
+## Windows installation planning and protected state
+
+[`internal/installplan`](../internal/installplan) defines a strict pre-SID Windows install specification and deterministic plan. The user supplies account names and workstation paths, but not resolved SIDs, credential locations, service commands, or arbitrary privileged actions. It rejects an installation root that is non-canonical, a filesystem root, or overlaps approved/profile/temp workload authority.
+
+`awg install --dry-run` is currently the only enabled install command. It reads the bounded specification and prints the fixed plan without generating a credential or performing mutation.
+
+[`internal/installstate`](../internal/installstate) binds native-resolved SIDs into the strict installed configuration and orders protected writes. The Windows implementation uses explicit LocalSystem/Administrators-only protected descriptors, same-handle final-path/type checks, bounded write-through replacement, and post-write owner/DACL verification. It seals only a private password copy and writes `installation.json` after the credential blob. [Windows implementation documentation](windows.md) describes the layout and evidence limits.
+
 ## Execute-only local broker envelope
 
 The local envelope contract is implemented in [`internal/brokerproto`](../internal/brokerproto), with a schema/example under [`runtime`](../runtime). It contains exactly:
@@ -161,7 +169,7 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 | Broker service | LocalSystem Windows service | root-owned hardened systemd service |
 | Peer authentication | explicit named-pipe DACL, remote-client rejection, impersonated caller SID verification, mandatory revert | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
 | Identity transition | installer-created account/logon right and installed LocalSystem E2E (the protected batch token source/profile lease and token-validating launcher are implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
-| Filesystem | near-launch final-path recheck and ACL denial (the authorization resolver is implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
+| Filesystem | account/root ACL grants plus elevated installed-host verification (protected broker-state descriptors/store and near-launch authorization checks are implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | installed-token E2E remains (Job Object ownership/termination is implemented and native-tested) | process group/session with TERM grace then KILL |
 | Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
 

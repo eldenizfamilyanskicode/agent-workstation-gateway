@@ -208,15 +208,15 @@ For the initial implementation:
 1. privileged broker initialization generates a high-entropy random local-account password;
 2. the broker creates or repairs the gateway-owned execution account;
 3. the account is granted `SeBatchLogonRight` and is denied interactive/remote-interactive use where policy permits;
-4. the broker protects the generated secret with Windows DPAPI **under the LocalSystem user scope** and stores only ciphertext in a SYSTEM/administrators-only broker state directory;
-5. `CRYPTPROTECT_LOCAL_MACHINE` is not used, because Microsoft documents that machine scope allows any user on the same machine to decrypt data protected with that scope;
+4. as superseded by ADR 0007, an elevated installer protects the generated secret with machine-scoped/no-UI Windows DPAPI and stores only ciphertext in a runtime-validated SYSTEM/administrators-only protected file;
+5. machine-scoped DPAPI is not treated as user authorization: same-handle final-path, owner, protected-DACL, and reader checks are mandatory before the blob is read;
 6. for a request, the broker decrypts the secret only into short-lived memory, calls `LogonUserW` using `LOGON32_LOGON_BATCH`, immediately zeroes plaintext buffers, and closes tokens/secret buffers as soon as possible;
 7. the resulting primary token is used with `CreateProcessAsUserW`;
 8. if user-profile state is required, the broker uses `LoadUserProfile` and keeps the profile lifetime bounded to owned execution activity.
 
 The account secret is a launch mechanism, not a workload credential. It is never written into the execution environment, command line, logs, results, or files readable by `awg-exec`.
 
-The broker, not an interactive installer user, performs the DPAPI protection step so the ciphertext is bound to the broker's LocalSystem DPAPI identity.
+ADR 0007 permits the local elevated installer to perform machine-scoped protection. The installer and broker must apply and independently verify the exact protected-file boundary because the ciphertext is not bound to the LocalSystem DPAPI identity.
 
 Domain/group policy can override local logon rights. `doctor` must perform an actual non-secret batch-logon/probe before reporting Windows execution ready.
 
@@ -366,9 +366,9 @@ Rejected as an assumption. GitHub requires Actions write for `workflow_dispatch`
 
 Rejected. That would turn any content-writing capability into code execution under the control/runner identity. Repository data is never a source of executable control-plane code.
 
-### Store the Windows execution-account password in plaintext
+### Store the Windows execution-account password in plaintext or rely on machine-scope DPAPI alone
 
-Rejected. The password is broker-only launch material and is protected at rest. DPAPI machine scope is also rejected because it is too broad for the intended account separation.
+Rejected. The password is broker-only launch material and is protected at rest. Machine-scope DPAPI alone is too broad for account separation; ADR 0007 accepts it only when the ciphertext is inside an independently enforced and runtime-validated SYSTEM/administrators-only file boundary.
 
 ## Consequences
 
