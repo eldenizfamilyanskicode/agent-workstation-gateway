@@ -124,7 +124,11 @@ The launch policy therefore requires a native resolver. Its contract is to:
 - return the exact request it evaluated plus canonical working/root paths;
 - fail closed on absence, access errors, ambiguous paths, and policy races it cannot safely handle.
 
-The shared policy independently checks that returned paths are canonical, that the root is configured, and that the directory is segment-contained. A mock resolver proves only shared orchestration behavior. It is not Windows or Linux filesystem-boundary evidence.
+The shared policy independently checks that returned paths are canonical, that the root is configured, and that the directory is segment-contained. A mock resolver proves only shared orchestration behavior.
+
+The Windows implementation in [`internal/platform/windows/pathresolver`](../internal/platform/windows/pathresolver) opens real directory handles and uses `GetFinalPathNameByHandleW`. It rejects a configured root that natively aliases another path and rejects a requested directory whose final path escapes every configured root. Local and hosted Windows tests exercise real directories and a real symbolic-link/reparse escape. [ADR 0005](adr/0005-windows-native-path-resolution.md) records the native dependency and the residual pathname race.
+
+This resolver is not an ACL sandbox and does not eliminate replacement between resolution and process creation. The Windows launcher must repeat the check near launch, protected ACLs must deny unrelated data, and native artifact reads need their own handle-based containment. The Linux resolver is still unimplemented.
 
 ## Closed shell invocation and shared lifecycle
 
@@ -147,7 +151,7 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 | Broker service | LocalSystem Windows service | root-owned hardened systemd service |
 | Peer authentication | explicit named-pipe DACL, remote-client rejection, impersonated caller SID verification, mandatory revert | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
 | Identity transition | broker-only protected batch-logon secret, `LogonUserW`, profile/token lifecycle, `CreateProcessAsUserW` | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
-| Filesystem | native final-path/reparse checks reinforced by ACL denial | native symlink/final-path checks reinforced by ownership/ACL denial |
+| Filesystem | near-launch final-path recheck and ACL denial (the authorization resolver is implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | Job Object tree ownership and termination | process group/session with TERM grace then KILL |
 | Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
 

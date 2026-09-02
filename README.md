@@ -118,6 +118,7 @@ Completed foundation work:
 - closed shell startup plans that carry arbitrary script content only as stdin data;
 - concurrent full-stream output hashing/counting with bounded retained prefixes;
 - shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
+- Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
 
 Not implemented yet at this checkpoint:
 
@@ -140,6 +141,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0002 — Private Control Repository and GitHub Transport`](docs/adr/0002-private-control-repository-and-github-transport.md)
 - [`ADR 0003 — Go Runtime and Packaging`](docs/adr/0003-go-runtime-and-packaging.md)
 - [`ADR 0004 — Apache License 2.0`](docs/adr/0004-apache-2.0-license.md)
+- [`ADR 0005 — Windows Native Path Resolution`](docs/adr/0005-windows-native-path-resolution.md)
 
 ## Contributing and security
 
