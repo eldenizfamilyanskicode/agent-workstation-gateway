@@ -1,0 +1,21 @@
+{
+  "config_version": 1,
+  "platform": "windows",
+  "installation_root": "C:\\ProgramData\\AgentWorkstationGateway",
+  "control_account": "awg-control",
+  "execution_account": "awg-exec",
+  "approved_roots": ["C:\\Users\\Alice\\Projects"],
+  "shells": [
+    {
+      "shell": "pwsh",
+      "executable": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+    }
+  ],
+  "profile_root": "C:\\ProgramData\\AWGProfiles\\Exec",
+  "temp_root": "C:\\ProgramData\\AWGTemp",
+  "path_entries": [
+    "C:\\Program Files\\PowerShell\\7",
+    "C:\\Windows\\System32"
+  ],
+  "capabilities": []
+}

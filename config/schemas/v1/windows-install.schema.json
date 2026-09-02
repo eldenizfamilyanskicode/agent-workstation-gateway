@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/config/schemas/v1/windows-install.schema.json",
+  "title": "Agent Workstation Gateway Windows install specification v1",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 65536,
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "platform",
+    "installation_root",
+    "control_account",
+    "execution_account",
+    "approved_roots",
+    "shells",
+    "profile_root",
+    "temp_root",
+    "path_entries",
+    "capabilities"
+  ],
+  "properties": {
+    "config_version": {"type": "integer", "const": 1},
+    "platform": {"type": "string", "const": "windows"},
+    "installation_root": {"$ref": "#/$defs/windows_absolute_path"},
+    "control_account": {"$ref": "#/$defs/account_name"},
+    "execution_account": {"$ref": "#/$defs/account_name"},
+    "approved_roots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/windows_absolute_path"}
+    },
+    "shells": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/shell_binding"}
+    },
+    "profile_root": {"$ref": "#/$defs/windows_absolute_path"},
+    "temp_root": {"$ref": "#/$defs/windows_absolute_path"},
+    "path_entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/windows_absolute_path"}
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "enum": ["docker"]}
+    }
+  },
+  "$defs": {
+    "account_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "windows_absolute_path": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 1024,
+      "pattern": "^[A-Z]:\\\\",
+      "x-awg-max-utf8-bytes": 1024
+    },
+    "shell_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shell", "executable"],
+      "properties": {
+        "shell": {"type": "string", "enum": ["cmd", "git-bash", "powershell", "pwsh"]},
+        "executable": {"$ref": "#/$defs/windows_absolute_path"}
+      }
+    }
+  }
+}
