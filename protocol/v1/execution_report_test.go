@@ -72,24 +72,30 @@ func TestFinalizeResultRecordAddsHostedAuthority(t *testing.T) {
 func TestFinalizeResultRecordRejectsUnboundOrInvalidAuthority(t *testing.T) {
 	accepted := validAcceptedRequestRecord(t)
 	tests := []struct {
-		name        string
-		alterReport func(*ExecutionReport)
-		finalizedAt string
-		alterFlow   func(*WorkflowProvenance)
-		field       string
-		rule        string
+		name          string
+		alterAccepted func(*AcceptedRequestRecord)
+		alterReport   func(*ExecutionReport)
+		finalizedAt   string
+		alterFlow     func(*WorkflowProvenance)
+		field         string
+		rule          string
 	}{
 		{name: "digest", alterReport: func(report *ExecutionReport) { report.RequestDigest = strings.Repeat("9", 64) }, finalizedAt: "2026-09-02T18:00:03Z", alterFlow: func(*WorkflowProvenance) {}, field: "request_digest", rule: "does-not-match-accepted-request"},
 		{name: "early finalization", alterReport: func(*ExecutionReport) {}, finalizedAt: "2026-09-02T17:59:59Z", alterFlow: func(*WorkflowProvenance) {}, field: "finalized_at", rule: "before-finished-at"},
 		{name: "workflow", alterReport: func(*ExecutionReport) {}, finalizedAt: "2026-09-02T18:00:03Z", alterFlow: func(workflow *WorkflowProvenance) { workflow.RunID++ }, field: "workflow", rule: "does-not-match-acceptance-run"},
+		{name: "earlier workflow attempt", alterReport: func(*ExecutionReport) {}, finalizedAt: "2026-09-02T18:00:03Z", alterFlow: func(workflow *WorkflowProvenance) { workflow.RunAttempt = 1 }, field: "workflow", rule: "does-not-match-acceptance-run", alterAccepted: func(accepted *AcceptedRequestRecord) { accepted.Workflow.RunAttempt = 2 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			acceptedForTest := accepted
+			if test.alterAccepted != nil {
+				test.alterAccepted(&acceptedForTest)
+			}
 			report := validExecutionReport(t)
 			test.alterReport(&report)
-			workflow := accepted.Workflow
+			workflow := acceptedForTest.Workflow
 			test.alterFlow(&workflow)
-			_, err := FinalizeResultRecord(accepted, report, test.finalizedAt, workflow)
+			_, err := FinalizeResultRecord(acceptedForTest, report, test.finalizedAt, workflow)
 			assertProtocolError(t, err, ErrorKindValidation, test.field, test.rule)
 		})
 	}

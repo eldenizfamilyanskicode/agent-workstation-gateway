@@ -9,6 +9,7 @@ func ValidateResultBinding(accepted AcceptedRequestRecord, result ResultRecord) 
 	}
 	if result.Workflow.Repository != accepted.Workflow.Repository ||
 		result.Workflow.RunID != accepted.Workflow.RunID ||
+		result.Workflow.RunAttempt < accepted.Workflow.RunAttempt ||
 		result.Workflow.EventName != accepted.Workflow.EventName ||
 		result.Workflow.EventAction != accepted.Workflow.EventAction ||
 		result.Workflow.HeadSHA != accepted.Workflow.HeadSHA {
