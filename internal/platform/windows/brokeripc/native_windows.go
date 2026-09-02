@@ -310,7 +310,8 @@ func (connection *connNative) read(ctx context.Context, buffer []byte) (int, err
 		return 0, err
 	}
 	count, err := readHandle(ctx, handle, buffer)
-	if errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, windows.ERROR_NO_DATA) {
+	if errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, windows.ERROR_NO_DATA) ||
+		errors.Is(err, windows.ERROR_PIPE_NOT_CONNECTED) {
 		return 0, io.EOF
 	}
 	if errors.Is(err, windows.ERROR_MORE_DATA) && count > 0 {

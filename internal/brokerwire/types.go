@@ -30,9 +30,13 @@ const (
 )
 
 const (
-	MaxPreambleBytes  = 1024
-	MaxDataChunkBytes = 64 * 1024
+	MaxPreambleBytes       = 1024
+	MaxDataChunkBytes      = 64 * 1024
+	MaxExchangeMarkerBytes = 16
 )
+
+const terminalMarker = "AWG\x01DONE"
+const acknowledgementMarker = "AWG\x01ACK"
 
 type Preamble struct {
 	ProtocolVersion      Version `json:"protocol_version"`

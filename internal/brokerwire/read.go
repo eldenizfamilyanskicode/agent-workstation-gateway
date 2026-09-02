@@ -1,6 +1,7 @@
 package brokerwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -10,8 +11,25 @@ import (
 )
 
 func ReadResponse(reader io.Reader, sink ArtifactSink) (Response, error) {
+	return readResponse(reader, sink, func() error { return expectEOF(reader) })
+}
+
+// ReadResponseExchange performs the terminal acknowledgement required before
+// a message-mode server disconnects. The server closes after reading the ACK,
+// and the client still requires EOF before committing artifact destinations.
+func ReadResponseExchange(stream io.ReadWriter, sink ArtifactSink) (Response, error) {
+	if stream == nil {
+		return Response{}, wireError("stream-required")
+	}
+	return readResponse(stream, sink, func() error { return finishClientExchange(stream) })
+}
+
+func readResponse(reader io.Reader, sink ArtifactSink, finish func() error) (Response, error) {
 	if reader == nil {
 		return Response{}, wireError("reader-required")
+	}
+	if finish == nil {
+		return Response{}, wireError("finish-required")
 	}
 	encodedPreamble, err := ipcframe.Read(reader, MaxPreambleBytes)
 	if err != nil {
@@ -22,7 +40,7 @@ func ReadResponse(reader io.Reader, sink ArtifactSink) (Response, error) {
 		return Response{}, err
 	}
 	if preamble.Outcome == OutcomeRejected {
-		if err := expectEOF(reader); err != nil {
+		if err := finish(); err != nil {
 			return Response{}, err
 		}
 		return Response{}, &RemoteError{Failure: preamble.Failure}
@@ -53,7 +71,7 @@ func ReadResponse(reader io.Reader, sink ArtifactSink) (Response, error) {
 
 	files := report.Artifacts.Files
 	if len(files) == 0 {
-		if err := expectEOF(reader); err != nil {
+		if err := finish(); err != nil {
 			return Response{}, err
 		}
 		return Response{Report: report, Stdout: stdout, Stderr: stderr}, nil
@@ -76,7 +94,7 @@ func ReadResponse(reader io.Reader, sink ArtifactSink) (Response, error) {
 			return Response{}, err
 		}
 	}
-	if err := expectEOF(reader); err != nil {
+	if err := finish(); err != nil {
 		return Response{}, err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -84,6 +102,17 @@ func ReadResponse(reader io.Reader, sink ArtifactSink) (Response, error) {
 	}
 	committed = true
 	return Response{Report: report, Stdout: stdout, Stderr: stderr}, nil
+}
+
+func finishClientExchange(stream io.ReadWriter) error {
+	terminal, err := ipcframe.Read(stream, MaxExchangeMarkerBytes)
+	if err != nil || !bytes.Equal(terminal, []byte(terminalMarker)) {
+		return wireError("terminal-marker-invalid")
+	}
+	if err := ipcframe.Write(stream, []byte(acknowledgementMarker), MaxExchangeMarkerBytes); err != nil {
+		return wireError("acknowledgement-write-failed")
+	}
+	return expectEOF(stream)
 }
 
 func readBytes(reader io.Reader, size int64) ([]byte, error) {

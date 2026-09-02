@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/executionrun"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/ipcframe"
@@ -155,6 +157,77 @@ func TestEmptyExecutionAndRejectionAreDistinctTerminalResponses(t *testing.T) {
 	if !errors.As(err, &remote) || remote.Failure != FailureAuthorizationDenied {
 		t.Fatalf("expected closed remote rejection, got %T / %v", err, err)
 	}
+}
+
+func TestFullDuplexExchangeAcknowledgesBeforeServerClose(t *testing.T) {
+	report := validWireReport([]byte("exchange"), nil, v1.ArtifactManifest{
+		Status: v1.ArtifactStatusNotRequested, Files: []v1.ArtifactFile{}, Omissions: []v1.ArtifactOmission{},
+	})
+	server, client := net.Pipe()
+	defer client.Close()
+	if err := client.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() {
+		err := WriteExecutionExchange(server, executionrun.Output{Report: report, Stdout: []byte("exchange"), Stderr: []byte{}})
+		closeErr := server.Close()
+		served <- errors.Join(err, closeErr)
+	}()
+	response, err := ReadResponseExchange(client, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response.Stdout) != "exchange" {
+		t.Fatalf("exchange output changed: %q", response.Stdout)
+	}
+	if err := <-served; err != nil {
+		t.Fatal(err)
+	}
+
+	server, client = net.Pipe()
+	defer client.Close()
+	if err := client.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	served = make(chan error, 1)
+	go func() {
+		err := WriteRejectionExchange(server, FailureInvalidEnvelope)
+		closeErr := server.Close()
+		served <- errors.Join(err, closeErr)
+	}()
+	_, err = ReadResponseExchange(client, nil)
+	var remote *RemoteError
+	if !errors.As(err, &remote) || remote.Failure != FailureInvalidEnvelope {
+		t.Fatalf("exchange rejection changed: %T / %v", err, err)
+	}
+	if err := <-served; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServerExchangeRejectsUnexpectedAcknowledgement(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+	if err := client.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() {
+		served <- WriteRejectionExchange(server, FailureInvalidFrame)
+		_ = server.Close()
+	}()
+	if _, err := ipcframe.Read(client, MaxPreambleBytes); err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := ipcframe.Read(client, MaxExchangeMarkerBytes)
+	if err != nil || !bytes.Equal(terminal, []byte(terminalMarker)) {
+		t.Fatalf("terminal marker missing: %q / %v", terminal, err)
+	}
+	if err := ipcframe.Write(client, []byte("not-an-ack"), MaxExchangeMarkerBytes); err != nil {
+		t.Fatal(err)
+	}
+	assertWireError(t, <-served, "acknowledgement-invalid")
 }
 
 func TestWriteExecutionFailsClosedAndAlwaysClosesBundle(t *testing.T) {

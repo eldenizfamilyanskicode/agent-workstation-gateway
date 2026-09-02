@@ -1,6 +1,7 @@
 package brokerwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -26,6 +27,16 @@ func WriteRejection(writer io.Writer, failure Failure) error {
 		return wireError("preamble-write-failed")
 	}
 	return nil
+}
+
+func WriteRejectionExchange(stream io.ReadWriter, failure Failure) error {
+	if stream == nil {
+		return wireError("stream-required")
+	}
+	if err := WriteRejection(stream, failure); err != nil {
+		return err
+	}
+	return finishServerExchange(stream)
 }
 
 // WriteExecution consumes output and always closes its artifact bundle.
@@ -71,6 +82,28 @@ func WriteExecution(writer io.Writer, output executionrun.Output) (resultErr err
 		if err := writeArtifact(writer, output.ArtifactBundle, file); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func WriteExecutionExchange(stream io.ReadWriter, output executionrun.Output) error {
+	if stream == nil {
+		_ = output.Close()
+		return wireError("stream-required")
+	}
+	if err := WriteExecution(stream, output); err != nil {
+		return err
+	}
+	return finishServerExchange(stream)
+}
+
+func finishServerExchange(stream io.ReadWriter) error {
+	if err := ipcframe.Write(stream, []byte(terminalMarker), MaxExchangeMarkerBytes); err != nil {
+		return wireError("terminal-marker-write-failed")
+	}
+	acknowledgement, err := ipcframe.Read(stream, MaxExchangeMarkerBytes)
+	if err != nil || !bytes.Equal(acknowledgement, []byte(acknowledgementMarker)) {
+		return wireError("acknowledgement-invalid")
 	}
 	return nil
 }
