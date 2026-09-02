@@ -108,6 +108,10 @@ Limits and safety rules:
 
 Artifact selection is not a filesystem read capability by itself. The later collector must enumerate/read under restricted execution authority, remain inside the validated working root, reject links/reparse escapes, and enforce file count and byte limits.
 
+Portable matching is case-sensitive and segment-based. `*`, `?`, and character classes do not cross `/`; a segment exactly equal to `**` matches zero or more complete segments. Native collectors do not delegate matching to a platform shell.
+
+The implemented execution lifecycle couples every reported file to a closeable content bundle. Each reported path must match an accepted pattern in the same group, and each omission must cite an exact accepted pattern. On Windows, the collector hashes and later streams through the same retained no-share-write/delete handle opened under execution authority. Manifest-only reopening under broker authority is forbidden. Broker wire streaming and hosted artifact upload are separate later boundaries.
+
 ## Canonical request and digest
 
 After strict decoding and semantic validation, AWG encodes the typed request in the fixed field order owned by the Go contract with no insignificant whitespace. It then computes SHA-256 over those canonical bytes and represents the digest as 64 lowercase hexadecimal characters.

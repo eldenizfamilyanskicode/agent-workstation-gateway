@@ -125,6 +125,7 @@ Completed foundation work:
 - create-new Windows control/execution account transaction with crypto-random credentials, Users-only policy, fixed LSA logon rights, SID binding, and owned rollback (mutating path reserved for isolated elevated verification).
 - rollback-capable Windows approved-root/profile/temp ACL convergence with same-handle validation and exact restricted execution rights (installed-account effective access reserved for isolated verification).
 - fixed Windows named-pipe transport with first-instance/local-only policy, exact protected DACL verification, bounded framing, and exact impersonated control-SID authentication (installed-account and remote-host evidence reserved for isolated verification).
+- Windows artifact collection under exact execution-token impersonation with portable bounded globs, link/final-path enforcement, stable content handles, and explicit omissions (broker upload and installed-token evidence remain).
 
 Not implemented yet at this checkpoint:
 
@@ -153,6 +154,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0008 — Windows Local Account and Logon-Right Provisioning`](docs/adr/0008-windows-local-account-and-logon-right-provisioning.md)
 - [`ADR 0009 — Windows Workload Filesystem ACLs`](docs/adr/0009-windows-workload-filesystem-acls.md)
 - [`ADR 0010 — Windows Authenticated Named-Pipe IPC`](docs/adr/0010-windows-authenticated-named-pipe.md)
+- [`ADR 0011 — Windows Artifacts Under Execution Authority`](docs/adr/0011-windows-execution-authority-artifacts.md)
 
 ## Contributing and security
 

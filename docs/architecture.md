@@ -150,7 +150,9 @@ This resolver is not an ACL sandbox and does not eliminate replacement between r
 
 The shared runner distinguishes completed, nonzero exit, runtime failure, timeout, and cancellation. [`internal/outputcapture`](../internal/outputcapture) concurrently hashes and counts every observed stdout/stderr byte while retaining only the accepted per-stream prefix. Returned retained byte slices are separate from the execution-report metadata and are never embedded in the durable ledger record.
 
-Artifact collection is a separate injected native boundary. Its plan contains only the fixed execution identity, resolved working directory, and accepted selections—not the script, shell arguments, or environment. Collector failure becomes explicit `collection_failed` omissions without overwriting the command outcome. Native enumeration, link/reparse rejection, byte transport, and reads under the execution identity remain unimplemented.
+Artifact collection is a separate injected native boundary. Its plan contains only the fixed execution identity, resolved working directory, and accepted selections—not the script, shell arguments, or environment. Collector failure becomes explicit `collection_failed` omissions without overwriting the command outcome. The lifecycle now couples validated manifest entries to a closeable content bundle and rejects files not matched by their accepted group patterns.
+
+The Windows implementation in [`internal/platform/windows/artifact`](../internal/platform/windows/artifact) enumerates and opens under an independently validated execution token, rejects sensitive/reparse/hard-link/alias/type escapes, enforces fixed scan/depth/file/byte limits, and hashes through stable handles that deny conflicting write/delete opens until streamed or closed. [ADR 0011](adr/0011-windows-execution-authority-artifacts.md) records the exact policy. Broker wire transport/upload and the entire Linux collector remain unimplemented.
 
 The workstation produces a strict non-authoritative `ExecutionReport`. It cannot contain hosted `finalized_at` or workflow provenance. [`protocol/v1`](../protocol/v1) can form an authoritative `ResultRecord` only when a finalizer supplies a valid accepted record, a bound report, canonical finalization time, and matching hosted workflow provenance.
 
@@ -175,7 +177,7 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 | Identity transition | installer-created account/logon right and installed LocalSystem E2E (the protected batch token source/profile lease and token-validating launcher are implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
 | Filesystem | account/root ACL grants plus elevated installed-host verification (protected broker-state descriptors/store and near-launch authorization checks are implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | installed-token E2E remains (Job Object ownership/termination is implemented and native-tested) | process group/session with TERM grace then KILL |
-| Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
+| Result data | native stdout/stderr plumbing and execution-authority artifact bundle implemented; broker streaming/upload remains | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
 
 Hosted Windows/Linux unit tests demonstrate parser, configuration, environment, bounded-capture, and shared fail-closed lifecycle behavior. Fake launchers, processes, timers, resolvers, and collectors are orchestration evidence only. They cannot demonstrate the native rows above; those claims require isolated real-host tests under the actual dedicated identities.
 
