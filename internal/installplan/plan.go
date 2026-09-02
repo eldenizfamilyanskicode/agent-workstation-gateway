@@ -61,18 +61,34 @@ func Build(specification Spec) (Plan, error) {
 		InstallationConfig:  joinWindows(specification.InstallationRoot, "state", "installation.json"),
 		ExecutionCredential: joinWindows(specification.InstallationRoot, "state", "execution-credential.dpapi"),
 	}
+	operations := []Operation{
+		{Kind: "ensure_protected_directory", Target: layout.Root},
+		{Kind: "ensure_protected_directory", Target: layout.BinDirectory},
+		{Kind: "ensure_protected_directory", Target: layout.StateDirectory},
+	}
+	operations = append(operations, workloadFilesystemOperations(specification)...)
+	operations = append(operations,
+		Operation{Kind: "write_execution_credential", Target: layout.ExecutionCredential},
+		Operation{Kind: "write_installed_configuration", Target: layout.InstallationConfig},
+	)
 	return Plan{
 		PlanVersion: installconfig.CurrentVersion,
 		Platform:    platformpath.Windows,
 		Layout:      layout,
-		Operations: []Operation{
-			{Kind: "ensure_protected_directory", Target: layout.Root},
-			{Kind: "ensure_protected_directory", Target: layout.BinDirectory},
-			{Kind: "ensure_protected_directory", Target: layout.StateDirectory},
-			{Kind: "write_execution_credential", Target: layout.ExecutionCredential},
-			{Kind: "write_installed_configuration", Target: layout.InstallationConfig},
-		},
+		Operations:  operations,
 	}, nil
+}
+
+func workloadFilesystemOperations(specification Spec) []Operation {
+	operations := make([]Operation, 0, len(specification.ApprovedRoots)+2)
+	for _, root := range specification.ApprovedRoots {
+		operations = append(operations, Operation{Kind: "grant_execution_modify", Target: root})
+	}
+	operations = append(operations,
+		Operation{Kind: "ensure_execution_profile", Target: specification.ProfileRoot},
+		Operation{Kind: "ensure_execution_temp", Target: specification.TempRoot},
+	)
+	return operations
 }
 
 func Bind(specification Spec, binding IdentityBinding) (installconfig.Config, error) {

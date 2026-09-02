@@ -20,6 +20,9 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 		`C:\ProgramData\AgentWorkstationGateway`,
 		`C:\ProgramData\AgentWorkstationGateway\bin`,
 		`C:\ProgramData\AgentWorkstationGateway\state`,
+		`C:\Users\Alice\Projects`,
+		`C:\ProgramData\AWGProfiles\Exec`,
+		`C:\ProgramData\AWGTemp`,
 		`C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
 		`C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
 	}
