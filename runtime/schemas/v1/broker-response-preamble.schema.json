@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/runtime/schemas/v1/broker-response-preamble.schema.json",
+  "title": "Agent Workstation Gateway local broker response preamble v1",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 1024,
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "outcome",
+    "failure",
+    "stdout_retained_sha256",
+    "stderr_retained_sha256"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["execution", "rejected"]
+    },
+    "failure": {
+      "type": "string",
+      "enum": [
+        "none",
+        "invalid_frame",
+        "invalid_envelope",
+        "authorization_denied",
+        "execution_unavailable",
+        "response_unavailable"
+      ]
+    },
+    "stdout_retained_sha256": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "stderr_retained_sha256": {
+      "type": "string",
+      "maxLength": 64
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {"const": "execution"}
+        }
+      },
+      "then": {
+        "properties": {
+          "failure": {"const": "none"},
+          "stdout_retained_sha256": {"pattern": "^[0-9a-f]{64}$"},
+          "stderr_retained_sha256": {"pattern": "^[0-9a-f]{64}$"}
+        }
+      },
+      "else": {
+        "properties": {
+          "failure": {
+            "enum": [
+              "invalid_frame",
+              "invalid_envelope",
+              "authorization_denied",
+              "execution_unavailable",
+              "response_unavailable"
+            ]
+          },
+          "stdout_retained_sha256": {"const": ""},
+          "stderr_retained_sha256": {"const": ""}
+        }
+      }
+    }
+  ]
+}
