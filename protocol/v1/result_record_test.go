@@ -71,7 +71,7 @@ func TestValidateResultRecordTimingAndOutputInvariants(t *testing.T) {
 		{name: "duration", alter: func(record *ResultRecord) { record.DurationMilliseconds = 999 }, field: "duration_ms", rule: "does-not-match-timestamps"},
 		{name: "finalized early", alter: func(record *ResultRecord) { record.FinalizedAt = "2026-09-02T17:59:59Z" }, field: "finalized_at", rule: "before-finished-at"},
 		{name: "stdout digest", alter: func(record *ResultRecord) { record.Stdout.SHA256 = strings.Repeat("A", 64) }, field: "stdout.sha256", rule: "invalid-lower-hex"},
-		{name: "stdout total", alter: func(record *ResultRecord) { record.Stdout.TotalBytes = MaxOutputBytes + 1 }, field: "stdout.total_bytes", rule: "outside-allowed-range"},
+		{name: "stdout total", alter: func(record *ResultRecord) { record.Stdout.TotalBytes = -1 }, field: "stdout.total_bytes", rule: "negative"},
 		{name: "retained above total", alter: func(record *ResultRecord) { record.Stdout.RetainedBytes = 2 }, field: "stdout.retained_bytes", rule: "outside-total-bytes"},
 		{name: "truncated without omission", alter: func(record *ResultRecord) { record.Stdout.Truncated = true }, field: "stdout.truncated", rule: "requires-omitted-bytes"},
 		{name: "untruncated missing bytes", alter: func(record *ResultRecord) { record.Stdout.TotalBytes = 2 }, field: "stdout.truncated", rule: "false-requires-all-bytes"},
@@ -93,6 +93,19 @@ func TestValidateResultRecordTimingAndOutputInvariants(t *testing.T) {
 	}
 	if err := ValidateResultRecord(record); err != nil {
 		t.Fatalf("valid truncated output rejected: %v", err)
+	}
+}
+
+func TestValidateResultRecordAcceptsFullStreamCountBeyondRetainedLimit(t *testing.T) {
+	record := validResultRecord(t)
+	record.Stdout = OutputMetadata{
+		SHA256:        strings.Repeat("d", 64),
+		TotalBytes:    int64(MaxOutputBytes) + 1,
+		RetainedBytes: MaxOutputBytes,
+		Truncated:     true,
+	}
+	if err := ValidateResultRecord(record); err != nil {
+		t.Fatalf("complete observed stream metadata was rejected: %v", err)
 	}
 }
 
@@ -201,10 +214,11 @@ func TestValidateResultBindingEnforcesAcceptedLimitsAndArtifactGroups(t *testing
 
 	result.Stdout = OutputMetadata{
 		SHA256:        strings.Repeat("d", 64),
-		TotalBytes:    int64(accepted.Request.MaxOutputBytes + 1),
+		TotalBytes:    int64(accepted.Request.MaxOutputBytes + 2),
 		RetainedBytes: int64(accepted.Request.MaxOutputBytes + 1),
+		Truncated:     true,
 	}
-	assertProtocolError(t, ValidateResultBinding(accepted, result), ErrorKindValidation, "stdout.total_bytes", "exceeds-accepted-output-limit")
+	assertProtocolError(t, ValidateResultBinding(accepted, result), ErrorKindValidation, "stdout.retained_bytes", "exceeds-accepted-output-limit")
 
 	result = validResultRecord(t)
 	result.Artifacts = ArtifactManifest{Status: ArtifactStatusComplete, Files: []ArtifactFile{validArtifactFile()}, Omissions: []ArtifactOmission{}}

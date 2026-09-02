@@ -3,6 +3,7 @@ package v1
 const (
 	MaxRequestBytes          = 64 * 1024
 	MaxAcceptedRecordBytes   = 128 * 1024
+	MaxExecutionReportBytes  = 256 * 1024
 	MaxResultRecordBytes     = 256 * 1024
 	MaxScriptBytes           = 48 * 1024
 	MaxIdentifierBytes       = 64

@@ -27,45 +27,11 @@ var supportedArtifactOmissionReasons = map[ArtifactOmissionReason]struct{}{
 }
 
 func ValidateResultRecord(record ResultRecord) error {
-	if record.ProtocolVersion != Version {
-		return validationError("protocol_version", "unsupported-version")
-	}
-	if err := validateIdentifier("request_id", record.RequestID); err != nil {
-		return err
-	}
-	if err := validateLowerHex("request_digest", record.RequestDigest, 64); err != nil {
-		return err
-	}
-	if err := validateIdentifier("attempt_id", record.AttemptID); err != nil {
-		return err
-	}
-	if err := validateLowerHex("gateway_source_sha", record.GatewaySourceSHA, 40); err != nil {
-		return err
-	}
-	if err := validateCommandOutcome(record.CommandStatus, record.ExitCode); err != nil {
-		return err
-	}
-	startedAt, err := validateCanonicalUTCTimestamp("started_at", record.StartedAt)
-	if err != nil {
+	if err := ValidateExecutionReport(executionReportFromResult(record)); err != nil {
 		return err
 	}
 	finishedAt, err := validateCanonicalUTCTimestamp("finished_at", record.FinishedAt)
 	if err != nil {
-		return err
-	}
-	if finishedAt.Before(startedAt) {
-		return validationError("finished_at", "before-started-at")
-	}
-	if record.DurationMilliseconds != finishedAt.Sub(startedAt).Milliseconds() {
-		return validationError("duration_ms", "does-not-match-timestamps")
-	}
-	if err := validateOutputMetadata("stdout", record.Stdout); err != nil {
-		return err
-	}
-	if err := validateOutputMetadata("stderr", record.Stderr); err != nil {
-		return err
-	}
-	if err := validateArtifactManifest(record.Artifacts); err != nil {
 		return err
 	}
 	finalizedAt, err := validateCanonicalUTCTimestamp("finalized_at", record.FinalizedAt)
@@ -76,6 +42,51 @@ func ValidateResultRecord(record ResultRecord) error {
 		return validationError("finalized_at", "before-finished-at")
 	}
 	return validateWorkflowProvenance(record.Workflow)
+}
+
+func ValidateExecutionReport(report ExecutionReport) error {
+	if report.ProtocolVersion != Version {
+		return validationError("protocol_version", "unsupported-version")
+	}
+	if err := validateIdentifier("request_id", report.RequestID); err != nil {
+		return err
+	}
+	if err := validateLowerHex("request_digest", report.RequestDigest, 64); err != nil {
+		return err
+	}
+	if err := validateIdentifier("attempt_id", report.AttemptID); err != nil {
+		return err
+	}
+	if err := validateLowerHex("gateway_source_sha", report.GatewaySourceSHA, 40); err != nil {
+		return err
+	}
+	if err := validateCommandOutcome(report.CommandStatus, report.ExitCode); err != nil {
+		return err
+	}
+	startedAt, err := validateCanonicalUTCTimestamp("started_at", report.StartedAt)
+	if err != nil {
+		return err
+	}
+	finishedAt, err := validateCanonicalUTCTimestamp("finished_at", report.FinishedAt)
+	if err != nil {
+		return err
+	}
+	if finishedAt.Before(startedAt) {
+		return validationError("finished_at", "before-started-at")
+	}
+	if report.DurationMilliseconds != finishedAt.Sub(startedAt).Milliseconds() {
+		return validationError("duration_ms", "does-not-match-timestamps")
+	}
+	if err := validateOutputMetadata("stdout", report.Stdout); err != nil {
+		return err
+	}
+	if err := validateOutputMetadata("stderr", report.Stderr); err != nil {
+		return err
+	}
+	if err := validateArtifactManifest(report.Artifacts); err != nil {
+		return err
+	}
+	return nil
 }
 
 func validateCommandOutcome(status CommandStatus, exitCode *int64) error {
@@ -103,10 +114,10 @@ func validateOutputMetadata(field string, output OutputMetadata) error {
 	if err := validateLowerHex(field+".sha256", output.SHA256, 64); err != nil {
 		return err
 	}
-	if output.TotalBytes < 0 || output.TotalBytes > MaxOutputBytes {
-		return validationError(field+".total_bytes", "outside-allowed-range")
+	if output.TotalBytes < 0 {
+		return validationError(field+".total_bytes", "negative")
 	}
-	if output.RetainedBytes < 0 || output.RetainedBytes > output.TotalBytes {
+	if output.RetainedBytes < 0 || output.RetainedBytes > MaxOutputBytes || output.RetainedBytes > output.TotalBytes {
 		return validationError(field+".retained_bytes", "outside-total-bytes")
 	}
 	if output.Truncated && output.RetainedBytes >= output.TotalBytes {

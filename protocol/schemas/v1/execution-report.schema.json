@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/schemas/v1/execution-report.schema.json",
+  "title": "Agent Workstation Gateway protocol v1 non-authoritative execution report",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 262144,
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "request_id",
+    "request_digest",
+    "attempt_id",
+    "gateway_source_sha",
+    "command_status",
+    "exit_code",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "stdout",
+    "stderr",
+    "artifacts"
+  ],
+  "properties": {
+    "protocol_version": {"type": "integer", "const": 1},
+    "request_id": {"$ref": "result.schema.json#/$defs/identifier"},
+    "request_digest": {"$ref": "result.schema.json#/$defs/sha256"},
+    "attempt_id": {"$ref": "result.schema.json#/$defs/identifier"},
+    "gateway_source_sha": {"$ref": "result.schema.json#/$defs/git_sha"},
+    "command_status": {
+      "type": "string",
+      "enum": ["cancelled", "completed", "failed", "runtime_failed", "timed_out"]
+    },
+    "exit_code": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      ]
+    },
+    "started_at": {"$ref": "result.schema.json#/$defs/canonical_utc_timestamp"},
+    "finished_at": {"$ref": "result.schema.json#/$defs/canonical_utc_timestamp"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "stdout": {"$ref": "result.schema.json#/$defs/output_metadata"},
+    "stderr": {"$ref": "result.schema.json#/$defs/output_metadata"},
+    "artifacts": {"$ref": "result.schema.json#/$defs/artifact_manifest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"command_status": {"const": "completed"}}},
+      "then": {"properties": {"exit_code": {"const": 0}}}
+    },
+    {
+      "if": {"properties": {"command_status": {"const": "failed"}}},
+      "then": {"properties": {"exit_code": {"type": "integer", "minimum": 1, "maximum": 4294967295}}}
+    },
+    {
+      "if": {"properties": {"command_status": {"enum": ["cancelled", "runtime_failed", "timed_out"]}}},
+      "then": {"properties": {"exit_code": {"type": "null"}}}
+    }
+  ]
+}

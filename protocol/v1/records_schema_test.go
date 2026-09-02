@@ -46,7 +46,9 @@ func TestResultSchemaIsStrictAndMatchesContract(t *testing.T) {
 	output := objectValue(t, definitions["output_metadata"])
 	assertStrictSchemaObject(t, "output metadata", output)
 	outputProperties := objectValue(t, output["properties"])
-	assertSchemaNumber(t, outputProperties, "total_bytes", "maximum", MaxOutputBytes)
+	if _, present := objectValue(t, outputProperties["total_bytes"])["maximum"]; present {
+		t.Fatal("total observed output bytes must not be confused with the retained-prefix limit")
+	}
 	assertSchemaNumber(t, outputProperties, "retained_bytes", "maximum", MaxOutputBytes)
 
 	manifest := objectValue(t, definitions["artifact_manifest"])
@@ -84,6 +86,27 @@ func TestResultSchemaIsStrictAndMatchesContract(t *testing.T) {
 	}
 }
 
+func TestExecutionReportSchemaIsStrictAndExcludesFinalizerAuthority(t *testing.T) {
+	schema := parseSchema(t, "execution-report.schema.json")
+	assertStrictSchemaObject(t, "execution report", schema)
+	assertSchemaRootNumber(t, schema, "x-awg-max-encoded-bytes", MaxExecutionReportBytes)
+	assertRequiredFields(t, schema, []string{
+		"artifacts", "attempt_id", "command_status", "duration_ms", "exit_code", "finished_at",
+		"gateway_source_sha", "protocol_version", "request_digest", "request_id", "started_at", "stderr", "stdout",
+	})
+	properties := objectValue(t, schema["properties"])
+	if _, present := properties["finalized_at"]; present {
+		t.Fatal("execution report schema grants finalization timestamp authority")
+	}
+	if _, present := properties["workflow"]; present {
+		t.Fatal("execution report schema grants workflow provenance authority")
+	}
+	conditionals, ok := schema["allOf"].([]any)
+	if !ok || len(conditionals) != 3 {
+		t.Fatalf("execution report schema must encode three command/exit correlations: %#v", schema["allOf"])
+	}
+}
+
 func TestLedgerExamplesDecodeRoundTripAndBind(t *testing.T) {
 	request, err := DecodeRequest(readProtocolFile(t, "examples", "v1", "request.json"))
 	if err != nil {
@@ -110,6 +133,16 @@ func TestLedgerExamplesDecodeRoundTripAndBind(t *testing.T) {
 	}
 	if err := ValidateResultBinding(accepted, result); err != nil {
 		t.Fatalf("result example does not bind to accepted example: %v", err)
+	}
+	report, err := DecodeExecutionReport(readProtocolFile(t, "examples", "v1", "execution-report.json"))
+	if err != nil {
+		t.Fatalf("execution report example is invalid: %v", err)
+	}
+	if err := ValidateExecutionReportBinding(accepted, report); err != nil {
+		t.Fatalf("execution report example does not bind to accepted example: %v", err)
+	}
+	if !reflect.DeepEqual(report, executionReportFromResult(result)) {
+		t.Fatal("execution report example does not match the non-authoritative fields of the result example")
 	}
 	assertCanonicalRecordRoundTrip(t, accepted, result)
 }

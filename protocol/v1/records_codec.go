@@ -26,6 +26,32 @@ func DigestAcceptedRequestRecord(record AcceptedRequestRecord) (string, error) {
 	return digestCanonicalBytes(encodedRecord), nil
 }
 
+func DecodeExecutionReport(encodedReport []byte) (ExecutionReport, error) {
+	var report ExecutionReport
+	if err := decodeStrictObject(encodedReport, MaxExecutionReportBytes, "execution_report", &report); err != nil {
+		return ExecutionReport{}, err
+	}
+	if err := ValidateExecutionReport(report); err != nil {
+		return ExecutionReport{}, err
+	}
+	return report, nil
+}
+
+func MarshalCanonicalExecutionReport(report ExecutionReport) ([]byte, error) {
+	if err := ValidateExecutionReport(report); err != nil {
+		return nil, err
+	}
+	return marshalCanonicalRecord(report, MaxExecutionReportBytes, "execution_report")
+}
+
+func DigestExecutionReport(report ExecutionReport) (string, error) {
+	encodedReport, err := MarshalCanonicalExecutionReport(report)
+	if err != nil {
+		return "", err
+	}
+	return digestCanonicalBytes(encodedReport), nil
+}
+
 func DecodeResultRecord(encodedRecord []byte) (ResultRecord, error) {
 	var record ResultRecord
 	if err := decodeStrictObject(encodedRecord, MaxResultRecordBytes, "result", &record); err != nil {

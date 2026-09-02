@@ -77,6 +77,22 @@ type ResultRecord struct {
 	Workflow             WorkflowProvenance `json:"workflow"`
 }
 
+type ExecutionReport struct {
+	ProtocolVersion      ProtocolVersion  `json:"protocol_version"`
+	RequestID            string           `json:"request_id"`
+	RequestDigest        string           `json:"request_digest"`
+	AttemptID            string           `json:"attempt_id"`
+	GatewaySourceSHA     string           `json:"gateway_source_sha"`
+	CommandStatus        CommandStatus    `json:"command_status"`
+	ExitCode             *int64           `json:"exit_code"`
+	StartedAt            string           `json:"started_at"`
+	FinishedAt           string           `json:"finished_at"`
+	DurationMilliseconds int64            `json:"duration_ms"`
+	Stdout               OutputMetadata   `json:"stdout"`
+	Stderr               OutputMetadata   `json:"stderr"`
+	Artifacts            ArtifactManifest `json:"artifacts"`
+}
+
 type OutputMetadata struct {
 	SHA256        string `json:"sha256"`
 	TotalBytes    int64  `json:"total_bytes"`
