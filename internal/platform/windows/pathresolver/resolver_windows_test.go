@@ -112,7 +112,11 @@ func canonicalTestPath(t *testing.T, path string) string {
 	if err := platformpath.ValidateAbsolute(platformpath.Windows, absolute); err != nil {
 		t.Fatalf("test path is not canonical: %v", err)
 	}
-	return absolute
+	native, err := resolveDirectory(absolute)
+	if err != nil {
+		t.Fatal("could not obtain native final path for test directory")
+	}
+	return native
 }
 
 func assertResolverRule(t *testing.T, err error, rule string) {
