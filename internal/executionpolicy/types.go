@@ -27,6 +27,7 @@ type LaunchPlan struct {
 	Shell             v1.Shell
 	Executable        string
 	WorkingDirectory  string
+	ApprovedRoot      string
 	Script            string
 	TimeoutSeconds    int
 	MaxOutputBytes    int

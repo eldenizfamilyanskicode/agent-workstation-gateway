@@ -46,6 +46,9 @@ func TestAuthorizeBuildsFixedIdentityLaunchPlan(t *testing.T) {
 	if plan.Executable != configuration.Shells[0].Executable || plan.WorkingDirectory != resolver.resolution.WorkingDirectory {
 		t.Fatalf("unexpected launch target: %#v", plan)
 	}
+	if plan.ApprovedRoot != resolver.resolution.ApprovedRoot {
+		t.Fatal("launch plan lost the native-approved root binding")
+	}
 	for _, entry := range plan.Environment {
 		if strings.HasPrefix(strings.ToUpper(entry), "GITHUB_TOKEN=") {
 			t.Fatal("control credential marker name reached workload environment")

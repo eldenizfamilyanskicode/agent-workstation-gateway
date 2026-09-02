@@ -153,7 +153,7 @@ func TestRunCompletesWithBoundedOutputAndIndependentArtifacts(t *testing.T) {
 	if err != nil || string(script) != marker {
 		t.Fatalf("script stdin changed: %q / %v", script, err)
 	}
-	if len(collector.plan.Selections) != 1 || collector.plan.WorkingDirectory != plan.WorkingDirectory || collector.plan.ExecutionIdentity != plan.ExecutionIdentity {
+	if len(collector.plan.Selections) != 1 || collector.plan.WorkingDirectory != plan.WorkingDirectory || collector.plan.ApprovedRoot != plan.ApprovedRoot || collector.plan.ExecutionIdentity != plan.ExecutionIdentity {
 		t.Fatalf("collector did not receive the restricted plan: %#v", collector.plan)
 	}
 }
@@ -315,7 +315,7 @@ func validLaunchPlan() executionpolicy.LaunchPlan {
 	return executionpolicy.LaunchPlan{
 		RequestID: "req-000001", RequestDigest: strings.Repeat("a", 64), SessionID: "example-session", AttemptID: "attempt-000001",
 		ExecutionIdentity: installconfig.Principal{Name: "awg-exec", Identifier: "1001", PrimaryGroupIdentifier: "1001"},
-		Shell:             v1.ShellBash, Executable: "/usr/bin/bash", WorkingDirectory: "/home/alice/projects/demo",
+		Shell:             v1.ShellBash, Executable: "/usr/bin/bash", WorkingDirectory: "/home/alice/projects/demo", ApprovedRoot: "/home/alice/projects",
 		Script: "printf 'SYNTHETIC-REQUEST-SCRIPT-9d61\\n'\n", TimeoutSeconds: 1, MaxOutputBytes: v1.MinOutputBytes,
 		Artifacts:   []v1.ArtifactSelection{{Name: "results", Paths: []string{"reports/*.json"}}},
 		Environment: []string{"HOME=/home/alice", "PATH=/usr/bin"}, Capabilities: []installconfig.Capability{},

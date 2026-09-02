@@ -90,6 +90,7 @@ func (runner *Runner) Run(ctx context.Context, plan executionpolicy.LaunchPlan, 
 	nativeLaunch := NativeLaunch{
 		ExecutionIdentity: plan.ExecutionIdentity,
 		WorkingDirectory:  plan.WorkingDirectory,
+		ApprovedRoot:      plan.ApprovedRoot,
 		Environment:       append([]string(nil), plan.Environment...),
 		Capabilities:      append([]installconfig.Capability(nil), plan.Capabilities...),
 		Invocation:        invocation,
@@ -249,6 +250,7 @@ func (runner *Runner) collectArtifacts(plan executionpolicy.LaunchPlan) v1.Artif
 	manifest, err := runner.collector.Collect(collectionContext, ArtifactPlan{
 		ExecutionIdentity: plan.ExecutionIdentity,
 		WorkingDirectory:  plan.WorkingDirectory,
+		ApprovedRoot:      plan.ApprovedRoot,
 		Selections:        cloneSelections(plan.Artifacts),
 	})
 	if err != nil || !artifactGroupsAllowed(manifest, plan.Artifacts) {

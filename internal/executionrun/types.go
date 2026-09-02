@@ -16,6 +16,7 @@ import (
 type NativeLaunch struct {
 	ExecutionIdentity installconfig.Principal
 	WorkingDirectory  string
+	ApprovedRoot      string
 	Environment       []string
 	Capabilities      []installconfig.Capability
 	Invocation        shellinvoke.Invocation
@@ -46,6 +47,7 @@ type ProcessExit struct {
 type ArtifactPlan struct {
 	ExecutionIdentity installconfig.Principal
 	WorkingDirectory  string
+	ApprovedRoot      string
 	Selections        []v1.ArtifactSelection
 }
 

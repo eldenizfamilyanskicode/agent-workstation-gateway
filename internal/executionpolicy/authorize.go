@@ -64,6 +64,7 @@ func Authorize(
 		Shell:             request.Shell,
 		Executable:        executable,
 		WorkingDirectory:  resolution.WorkingDirectory,
+		ApprovedRoot:      resolution.ApprovedRoot,
 		Script:            request.Script,
 		TimeoutSeconds:    request.TimeoutSeconds,
 		MaxOutputBytes:    request.MaxOutputBytes,
