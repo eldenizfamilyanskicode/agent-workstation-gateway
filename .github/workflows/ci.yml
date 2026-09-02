@@ -1,0 +1,75 @@
+name: Public CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          $unformattedFiles = @(gofmt -l .)
+          if ($unformattedFiles.Count -ne 0) {
+            $unformattedFiles
+            throw "gofmt reported unformatted files"
+          }
+      - name: Vet packages
+        run: go vet ./...
+      - name: Test packages
+        run: go test ./... -count=1
+      - name: Build packages
+        run: go build ./...
+      - name: Scan public tree and history
+        run: go run ./cmd/awg-public-safety -scope all
+
+  windows:
+    name: Windows verification
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          $unformattedFiles = @(gofmt -l .)
+          if ($unformattedFiles.Count -ne 0) {
+            $unformattedFiles
+            throw "gofmt reported unformatted files"
+          }
+      - name: Vet packages
+        run: go vet ./...
+      - name: Test packages
+        run: go test ./... -count=1
+      - name: Build packages
+        run: go build ./...
+      - name: Scan public tree and history
+        run: go run ./cmd/awg-public-safety -scope all
