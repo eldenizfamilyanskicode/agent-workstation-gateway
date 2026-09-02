@@ -13,24 +13,28 @@ import (
 )
 
 type fakeNative struct {
-	exists     map[string]bool
-	created    []string
-	policies   []Role
-	deleted    []string
-	failCreate string
+	exists          map[string]bool
+	created         []string
+	policies        []Role
+	deleted         []string
+	failCreate      string
+	failAfterCreate string
 }
 
 func (native *fakeNative) AccountExists(name string) (bool, error) { return native.exists[name], nil }
-func (native *fakeNative) CreateAccount(name string, password []byte) (Account, error) {
+func (native *fakeNative) CreateAccount(name string, password []byte) (Account, bool, error) {
 	if name == native.failCreate {
-		return Account{}, errors.New("synthetic")
+		return Account{Name: name}, false, errors.New("synthetic")
 	}
 	native.created = append(native.created, name)
+	if name == native.failAfterCreate {
+		return Account{Name: name}, true, errors.New("synthetic post-create failure")
+	}
 	identifier := "S-1-5-21-2000-2000-2000-1001"
 	if len(native.created) == 2 {
 		identifier = "S-1-5-21-2000-2000-2000-1002"
 	}
-	return Account{Name: name, Identifier: identifier, PrimaryGroupIdentifier: "S-1-5-32-545"}, nil
+	return Account{Name: name, Identifier: identifier, PrimaryGroupIdentifier: "S-1-5-32-545"}, true, nil
 }
 func (native *fakeNative) ApplyPolicy(role Role, _ Account) error {
 	native.policies = append(native.policies, role)
@@ -101,6 +105,17 @@ func TestProvisionRollsBackOnlyCreatedAccountInReverseOrder(t *testing.T) {
 	assertProvisionError(t, err, "execution-account-create-failed")
 	if len(native.deleted) != 1 || native.deleted[0] != "awg-control" {
 		t.Fatalf("rollback targets differ: %#v", native.deleted)
+	}
+}
+
+func TestProvisionRollsBackNativePostCreateFailure(t *testing.T) {
+	native := &fakeNative{exists: make(map[string]bool), failAfterCreate: "awg-exec"}
+	_, err := Provision(context.Background(), accountSpec(), native, &fixedGenerator{passwords: [][]byte{
+		[]byte("Synthetic-control-password-5!"), []byte("Synthetic-execution-password-6!"),
+	}})
+	assertProvisionError(t, err, "execution-account-create-failed")
+	if len(native.deleted) != 2 || native.deleted[0] != "awg-exec" || native.deleted[1] != "awg-control" {
+		t.Fatalf("post-create rollback order differs: %#v", native.deleted)
 	}
 }
 

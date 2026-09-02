@@ -25,7 +25,7 @@ type Account struct {
 
 type Native interface {
 	AccountExists(name string) (bool, error)
-	CreateAccount(name string, password []byte) (Account, error)
+	CreateAccount(name string, password []byte) (Account, bool, error)
 	ApplyPolicy(role Role, account Account) error
 	DeleteAccount(name string) error
 }
@@ -101,16 +101,20 @@ func Provision(
 	}
 	lease.executionPassword = executionPassword
 
-	control, err := native.CreateAccount(specification.ControlAccount, lease.controlPassword)
+	control, controlCreated, err := native.CreateAccount(specification.ControlAccount, lease.controlPassword)
+	if controlCreated {
+		lease.created = append(lease.created, specification.ControlAccount)
+	}
 	if err != nil || !strings.EqualFold(control.Name, specification.ControlAccount) {
 		return nil, provisionError("control-account-create-failed")
 	}
-	lease.created = append(lease.created, specification.ControlAccount)
-	execution, err := native.CreateAccount(specification.ExecutionAccount, lease.executionPassword)
+	execution, executionCreated, err := native.CreateAccount(specification.ExecutionAccount, lease.executionPassword)
+	if executionCreated {
+		lease.created = append(lease.created, specification.ExecutionAccount)
+	}
 	if err != nil || !strings.EqualFold(execution.Name, specification.ExecutionAccount) {
 		return nil, provisionError("execution-account-create-failed")
 	}
-	lease.created = append(lease.created, specification.ExecutionAccount)
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
