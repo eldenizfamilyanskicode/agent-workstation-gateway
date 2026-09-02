@@ -1,6 +1,6 @@
 # Agent Workstation Gateway
 
-> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, hosted CI, and protocol v1 request contract exist. The result protocol, gateway runtime, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
+> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, hosted CI, and protocol v1 request/ledger/result contracts exist. The gateway runtime, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
 
 Agent Workstation Gateway (AWG) is a vendor-neutral gateway for letting a **trusted AI/development agent** request bounded work on a user's workstation while keeping public source code separate from workstation execution authority.
 
@@ -112,11 +112,11 @@ Completed foundation work:
 - public security, contribution, and agent-development policies;
 - local public/workflow safety scanner with reachable-history checks;
 - hosted-only public CI verified on GitHub's Windows and Linux runner pools;
-- strict protocol v1 request schema, Go codec/validation, canonicalization, and digest.
+- strict protocol v1 request schema, Go codec/validation, canonicalization, and digest;
+- strict protocol v1 accepted-request/result schemas, provenance and binding validation, failure semantics, and bounded output/artifact metadata.
 
 Not implemented yet at this checkpoint:
 
-- protocol v1 result/ledger schemas and end-to-end compatibility tests;
 - Go CLI/control/broker runtime;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
@@ -126,7 +126,7 @@ Not implemented yet at this checkpoint:
 
 The README will be updated as those capabilities become real and verified.
 
-The implemented request contract is documented in [`docs/protocol-v1.md`](docs/protocol-v1.md).
+The implemented protocol v1 contracts are documented in [`docs/protocol-v1.md`](docs/protocol-v1.md).
 
 ## Architecture decisions
 

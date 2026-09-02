@@ -1,8 +1,14 @@
-# Protocol v1 Request Contract
+# Protocol v1 Contracts
 
-This document defines the implemented request side of Agent Workstation Gateway protocol v1. The result, accepted-ledger, attempt, and finalization records are not yet defined at this checkpoint.
+This document defines the implemented Agent Workstation Gateway protocol v1 request, accepted-request ledger, and authoritative result records.
 
-The public machine-readable contract is [`protocol/schemas/v1/request.schema.json`](../protocol/schemas/v1/request.schema.json). The Go implementation is [`protocol/v1`](../protocol/v1), and a synthetic request is available at [`protocol/examples/v1/request.json`](../protocol/examples/v1/request.json).
+The public machine-readable contracts are:
+
+- [`request.schema.json`](../protocol/schemas/v1/request.schema.json);
+- [`accepted-request.schema.json`](../protocol/schemas/v1/accepted-request.schema.json);
+- [`result.schema.json`](../protocol/schemas/v1/result.schema.json).
+
+The Go implementation is [`protocol/v1`](../protocol/v1). Mutually bound synthetic examples are in [`protocol/examples/v1`](../protocol/examples/v1).
 
 ## Security boundary
 
@@ -25,12 +31,11 @@ The request contract validates syntax and platform-neutral meaning. It does not 
 
 ## Encoding and envelope limits
 
-The accepted request is exactly one UTF-8 JSON object.
+Each record is exactly one UTF-8 JSON object. Encoded limits are 65,536 bytes for a request, 131,072 bytes for an accepted-request record, and 262,144 bytes for a result record.
 
-- Maximum encoded request size: 65,536 bytes.
 - A UTF-8 byte-order mark is not accepted as JSON syntax.
 - Invalid UTF-8 is rejected rather than replaced.
-- Every field is required, including an empty `artifacts` array when no artifacts are requested.
+- Every declared field is required. This includes zero-valued scalar fields, explicit `null` for an unavailable exit code, and empty artifact arrays.
 - Unknown fields, duplicate object keys at any depth, trailing JSON values, and malformed JSON are rejected.
 - No implicit defaults are applied during decoding or canonicalization.
 
@@ -116,9 +121,136 @@ Consequences:
 
 The canonical request bytes and digest bind the accepted ledger record. They do not authenticate the requester by themselves; transport provenance and create-once ledger semantics provide that control-plane context.
 
+## Accepted-request ledger record
+
+The authoritative accepted request is created at this fixed private-control ledger path before workstation execution starts:
+
+```text
+ledger/requests/<request-id>/accepted.json
+```
+
+The issue body is only a submission envelope. A disposable hosted accept job reads the immutable `issues: opened` event snapshot, performs strict request validation, computes the canonical request digest, and uses control-owned compare-and-create authority to write `accepted.json`. It must not refetch a later edited issue body.
+
+The accepted record contains:
+
+| Field | Contract |
+|---|---|
+| `protocol_version` | Exactly `1`. |
+| `request_id` | Must equal the embedded request ID. |
+| `request_digest` | SHA-256 of the canonical embedded request; must recompute exactly. |
+| `request` | The complete strictly validated protocol v1 request. |
+| `issue` | Positive issue number, bounded node identity, and sender numeric ID/login from the opened-event snapshot. |
+| `workflow` | Private repository, run ID/attempt, exact `issues`/`opened` event, and lowercase 40-hex workflow source SHA. |
+| `control_source_sha` | Lowercase 40-hex source revision of the fixed control implementation selected by the installation. |
+| `accepted_at` | Canonical RFC 3339 UTC timestamp using `Z`. |
+
+Repository and login strings are descriptive provenance, not authorization fields supplied by the request. The hosted accept job derives them from trusted event context. The Go validator binds request ID and digest, but repository visibility and installation identity remain control-workflow policy checks.
+
+Compare-and-create behavior is part of the transport contract:
+
+- an unseen request ID can create one accepted record;
+- the same ID and digest is a duplicate or recovery observation, not a new execution grant;
+- the same ID with a different digest is a conflict and fails closed;
+- the accepted record is never rewritten to represent retries.
+
+## Authoritative result record
+
+The terminal result has one fixed private-control ledger path:
+
+```text
+ledger/requests/<request-id>/result.json
+```
+
+A result record contains the accepted request ID/digest, a stable execution attempt ID, the installed gateway source SHA observed at execution, command outcome, timing, bounded output metadata, an independent artifact outcome, hosted finalization time, and workflow provenance.
+
+Standalone result validation proves the record's shape and internal invariants. Before publication, the finalizer must also validate it against `accepted.json`. The implemented binding check requires:
+
+- identical request ID and canonical request digest;
+- stdout and stderr totals no larger than the request's accepted per-stream output limit;
+- `not_requested` artifacts exactly when the accepted request has no artifact groups;
+- every returned file or omission to name an accepted artifact group;
+- the same private repository, workflow run ID, event, and workflow source SHA as acceptance.
+
+A rerun may have a later workflow `run_attempt`; it does not acquire permission to change the accepted request or execution attempt.
+
+### Command states and exit codes
+
+Command outcome is a closed state independent of artifact collection:
+
+| `command_status` | `exit_code` | Meaning |
+|---|---|---|
+| `completed` | exactly `0` | The launched command completed successfully. |
+| `failed` | integer `1`–`4294967295` | The command completed with a platform exit code. |
+| `timed_out` | `null` | The configured timeout terminated the attempt; no ordinary exit code is claimed. |
+| `cancelled` | `null` | Trusted control cancelled the attempt. |
+| `runtime_failed` | `null` | The gateway could not obtain an ordinary command completion, such as a launch or boundary failure. |
+
+`started_at`, `finished_at`, and `finalized_at` are canonical RFC 3339 UTC timestamps using `Z`. Finish cannot precede start, finalization cannot precede finish, and `duration_ms` equals the elapsed duration truncated to whole milliseconds.
+
+### Output metadata
+
+`stdout` and `stderr` each contain:
+
+| Field | Contract |
+|---|---|
+| `sha256` | 64 lowercase hex characters for the complete observed stream. |
+| `total_bytes` | Complete observed byte count, bounded by both the protocol maximum and accepted request limit. |
+| `retained_bytes` | Bytes retained for return; never greater than `total_bytes`. |
+| `truncated` | `true` exactly when some observed bytes were not retained. |
+
+The ledger record does not embed output bytes. The execution/finalization handoff may carry bounded retained bytes as data, while the metadata keeps truncation explicit. A false `truncated` flag requires all observed bytes to have been retained.
+
+### Artifact manifest
+
+Artifact collection has its own status so a successful command cannot hide an artifact failure:
+
+| `artifacts.status` | Required shape |
+|---|---|
+| `not_requested` | Both arrays empty; valid only when the accepted request has no artifact selections. |
+| `complete` | At least one file and no omissions. |
+| `complete_with_omissions` | One or more explicit omissions; files may also be present. |
+| `failed` | One or more explicit omissions; any successfully collected files remain visible. |
+
+Each file records its accepted group, slash-separated relative path, SHA-256, and byte size. Actual file paths cannot contain glob metacharacters. Each omission records its group, original relative pattern, and one closed reason:
+
+```text
+byte_limit
+collection_failed
+file_limit
+link_rejected
+no_match
+policy_rejected
+read_failed
+unsupported_type
+```
+
+The manifest permits at most 256 file records and 128 omissions. File paths are at most 1,024 UTF-8 bytes, individual files at most 536,870,912 bytes, and the manifest's summed file sizes at most 1,073,741,824 bytes. Paths remain relative, reject traversal, control characters, links reported by collection policy, and known sensitive segments. Duplicate group/path files and duplicate group/pattern/reason omissions are rejected.
+
+These metadata limits do not authorize a filesystem read. The restricted collector must still enforce the accepted glob, approved root, native link/reparse checks, OS permissions, and byte/count limits while accessing files.
+
+## Finalization and recovery semantics
+
+Workstation output is a proposed result, not the authoritative ledger. Only the disposable hosted finalizer has result-publication authority. It validates the proposed record against the create-once accepted record and creates `result.json` without overwrite.
+
+Therefore:
+
+- command success plus artifact failure is represented as `command_status: completed` with `artifacts.status: failed`;
+- command failure plus successfully collected diagnostics keeps the command failure and independent artifact success;
+- a finalization failure is the absence of a new authoritative `result.json`, never an authoritative successful result with a misleading status;
+- recovery may re-finalize the same accepted digest and terminal attempt without re-executing it;
+- a different terminal result for an already finalized request is a create-once conflict and fails closed.
+
+Actions logs and transient cross-job artifacts are supporting transport evidence, not replacements for the durable private ledger.
+
+## Canonical ledger encoding
+
+Accepted and result records use the same typed fixed-order JSON canonicalization as requests: no insignificant whitespace, no dropped/defaulted fields, and SHA-256 over the resulting bytes when a record digest is needed. Canonical encoding revalidates semantics and enforces the record-specific encoded limit even for programmatically constructed values.
+
+The canonical request digest inside `accepted.json` and `result.json` always identifies the request bytes, not the formatting of either ledger record. `DigestAcceptedRequestRecord` and `DigestResultRecord` are available for audit/integrity uses but do not replace control-owned compare-and-create publication.
+
 ## Versioning and compatibility
 
-Protocol v1 is a closed contract. A decoder for v1 accepts only `protocol_version: 1` and the exact field set above.
+Protocol v1 is a closed contract. A decoder for v1 accepts only `protocol_version: 1` and the exact field sets above.
 
 An incompatible field, meaning, enum, or validation change requires a new protocol version. Compatible implementation fixes may make validation more faithful to this documented contract, but must not silently reinterpret already accepted canonical bytes.
 
@@ -126,4 +258,4 @@ Non-Go implementations may use the JSON Schema for structural validation, but th
 
 ## Error disclosure
 
-The Go codec returns structured error kind, field, and rule identifiers. It does not include raw request values or unknown key names in error text. Control-plane logging may record bounded provenance and these rule identifiers, but must not echo a secret merely because it appeared in an invalid request.
+The Go codecs return structured error kind, field, and rule identifiers. They do not include raw values or unknown key names in error text. Control-plane logging may record bounded provenance and these rule identifiers, but must not echo a secret merely because it appeared in an invalid record.

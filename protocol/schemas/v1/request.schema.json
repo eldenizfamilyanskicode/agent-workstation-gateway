@@ -3,6 +3,7 @@
   "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/schemas/v1/request.schema.json",
   "title": "Agent Workstation Gateway protocol v1 request",
   "type": "object",
+  "x-awg-max-encoded-bytes": 65536,
   "additionalProperties": false,
   "required": [
     "protocol_version",

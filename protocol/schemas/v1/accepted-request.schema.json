@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/schemas/v1/accepted-request.schema.json",
+  "title": "Agent Workstation Gateway protocol v1 accepted request record",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 131072,
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "request_id",
+    "request_digest",
+    "request",
+    "issue",
+    "workflow",
+    "control_source_sha",
+    "accepted_at"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "request_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "request_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "request": {
+      "$ref": "request.schema.json"
+    },
+    "issue": {
+      "$ref": "#/$defs/issue_provenance"
+    },
+    "workflow": {
+      "$ref": "#/$defs/workflow_provenance"
+    },
+    "control_source_sha": {
+      "$ref": "#/$defs/git_sha"
+    },
+    "accepted_at": {
+      "$ref": "#/$defs/canonical_utc_timestamp"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "canonical_utc_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "issue_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "node_id", "sender_id", "sender_login"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "x-awg-max-utf8-bytes": 128,
+          "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+        },
+        "sender_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sender_login": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 39,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"
+        }
+      }
+    },
+    "workflow_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "run_id", "run_attempt", "event_name", "event_action", "head_sha"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 201,
+          "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event_name": {
+          "type": "string",
+          "const": "issues"
+        },
+        "event_action": {
+          "type": "string",
+          "const": "opened"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/git_sha"
+        }
+      }
+    }
+  }
+}

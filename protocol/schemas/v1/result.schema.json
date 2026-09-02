@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/schemas/v1/result.schema.json",
+  "title": "Agent Workstation Gateway protocol v1 authoritative result record",
+  "type": "object",
+  "x-awg-max-encoded-bytes": 262144,
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "request_id",
+    "request_digest",
+    "attempt_id",
+    "gateway_source_sha",
+    "command_status",
+    "exit_code",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "stdout",
+    "stderr",
+    "artifacts",
+    "finalized_at",
+    "workflow"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "request_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "request_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "attempt_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "gateway_source_sha": {
+      "$ref": "#/$defs/git_sha"
+    },
+    "command_status": {
+      "type": "string",
+      "enum": ["cancelled", "completed", "failed", "runtime_failed", "timed_out"]
+    },
+    "exit_code": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      ]
+    },
+    "started_at": {
+      "$ref": "#/$defs/canonical_utc_timestamp"
+    },
+    "finished_at": {
+      "$ref": "#/$defs/canonical_utc_timestamp"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stdout": {
+      "$ref": "#/$defs/output_metadata"
+    },
+    "stderr": {
+      "$ref": "#/$defs/output_metadata"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifact_manifest"
+    },
+    "finalized_at": {
+      "$ref": "#/$defs/canonical_utc_timestamp"
+    },
+    "workflow": {
+      "$ref": "#/$defs/workflow_provenance"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"command_status": {"const": "completed"}}},
+      "then": {"properties": {"exit_code": {"const": 0}}}
+    },
+    {
+      "if": {"properties": {"command_status": {"const": "failed"}}},
+      "then": {"properties": {"exit_code": {"type": "integer", "minimum": 1, "maximum": 4294967295}}}
+    },
+    {
+      "if": {"properties": {"command_status": {"enum": ["cancelled", "runtime_failed", "timed_out"]}}},
+      "then": {"properties": {"exit_code": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "canonical_utc_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "output_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "total_bytes", "retained_bytes", "truncated"],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "total_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5242880
+        },
+        "retained_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5242880
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artifact_manifest": {
+      "type": "object",
+      "x-awg-max-total-file-bytes": 1073741824,
+      "additionalProperties": false,
+      "required": ["status", "files", "omissions"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["complete", "complete_with_omissions", "failed", "not_requested"]
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/artifact_file"}
+        },
+        "omissions": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/artifact_omission"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "not_requested"}}},
+          "then": {"properties": {"files": {"maxItems": 0}, "omissions": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "complete"}}},
+          "then": {"properties": {"files": {"minItems": 1}, "omissions": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["complete_with_omissions", "failed"]}}},
+          "then": {"properties": {"omissions": {"minItems": 1}}}
+        }
+      ]
+    },
+    "artifact_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "path", "sha256", "size_bytes"],
+      "properties": {
+        "group": {
+          "$ref": "#/$defs/artifact_group"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "x-awg-max-utf8-bytes": 1024,
+          "pattern": "^[^/\\\\:][^\\\\:]*$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 536870912
+        }
+      }
+    },
+    "artifact_omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "pattern", "reason"],
+      "properties": {
+        "group": {
+          "$ref": "#/$defs/artifact_group"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-awg-max-utf8-bytes": 256,
+          "pattern": "^[^/\\\\:]"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "byte_limit",
+            "collection_failed",
+            "file_limit",
+            "link_rejected",
+            "no_match",
+            "policy_rejected",
+            "read_failed",
+            "unsupported_type"
+          ]
+        }
+      }
+    },
+    "artifact_group": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$"
+    },
+    "workflow_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "run_id", "run_attempt", "event_name", "event_action", "head_sha"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 201,
+          "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event_name": {
+          "type": "string",
+          "const": "issues"
+        },
+        "event_action": {
+          "type": "string",
+          "const": "opened"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/git_sha"
+        }
+      }
+    }
+  }
+}
