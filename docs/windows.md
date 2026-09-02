@@ -31,6 +31,14 @@ The command strictly decodes the bounded specification and writes one determinis
 
 Non-dry-run installation is deliberately rejected until the account/rights/service transaction is implemented and verified.
 
+## Account and logon-right transaction
+
+The create-new account transaction is implemented behind an elevated native boundary but is not yet enabled by the CLI. Both configured names must be absent before password generation. It generates independent mutable credentials, creates only normal local users, resolves their real SIDs, and binds those SIDs into installed configuration.
+
+Both accounts must have built-in Users as their only reported local group. Control receives service logon plus interactive/RDP deny rights. Execution receives batch logon plus interactive/RDP/service deny rights. The right strings and memberships are product policy, not installer input. [ADR 0008](adr/0008-windows-local-account-and-logon-right-provisioning.md) records the exact sets and create-new decision.
+
+The transaction tracks NetAPI's created/not-created result even when a post-create step fails. Closing an uncommitted lease deletes only accounts positively created by that lease, in reverse order, and clears both credentials. Commit preserves accounts and clears credentials. Pre-existing names are never adopted or deleted.
+
 ## Fixed protected layout
 
 For an installation root such as `C:\ProgramData\AgentWorkstationGateway`, the product derives rather than accepts these paths:
@@ -60,4 +68,4 @@ No plaintext password is written to the plan, configuration, filesystem, environ
 
 Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, exact ACL descriptor policy, ordinary-parent denial before artifact creation, DPAPI mechanism behavior, and compatibility with the token source's ACL validator.
 
-They do not prove successful elevated convergence to a LocalSystem owner, account creation, logon-right assignment, LocalSystem service behavior, or execution-account denial. Those are later installer and isolated-smoke gates. Cross-compilation is not Windows security evidence.
+They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or execution-account denial. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.

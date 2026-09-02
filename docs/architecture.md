@@ -63,6 +63,8 @@ The decoder validates configuration content. It does not prove file ownership or
 
 [`internal/installstate`](../internal/installstate) binds native-resolved SIDs into the strict installed configuration and orders protected writes. The Windows implementation uses explicit LocalSystem/Administrators-only protected descriptors, same-handle final-path/type checks, bounded write-through replacement, and post-write owner/DACL verification. It seals only a private password copy and writes `installation.json` after the credential blob. [Windows implementation documentation](windows.md) describes the layout and evidence limits.
 
+[`internal/accountprovision`](../internal/accountprovision) owns the create-new identity transaction. The native Windows implementation is closed to the two validated account names, Users-only membership, and fixed service/batch plus deny-logon right sets. A lease carries generated credentials only into subsequent local installation steps, tracks partial NetAPI success for rollback, and clears credentials on commit/close. [ADR 0008](adr/0008-windows-local-account-and-logon-right-provisioning.md) records why existing accounts are not implicitly adopted.
+
 ## Execute-only local broker envelope
 
 The local envelope contract is implemented in [`internal/brokerproto`](../internal/brokerproto), with a schema/example under [`runtime`](../runtime). It contains exactly:
