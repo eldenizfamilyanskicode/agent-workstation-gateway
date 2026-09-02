@@ -119,6 +119,7 @@ Completed foundation work:
 - concurrent full-stream output hashing/counting with bounded retained prefixes;
 - shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
 - Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
+- Windows mandatory-token `CreateProcessAsUserW` and Job Object process-tree implementation (without installed-account/service E2E claims).
 
 Not implemented yet at this checkpoint:
 
@@ -142,6 +143,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0003 — Go Runtime and Packaging`](docs/adr/0003-go-runtime-and-packaging.md)
 - [`ADR 0004 — Apache License 2.0`](docs/adr/0004-apache-2.0-license.md)
 - [`ADR 0005 — Windows Native Path Resolution`](docs/adr/0005-windows-native-path-resolution.md)
+- [`ADR 0006 — Windows Restricted Process and Job Boundary`](docs/adr/0006-windows-restricted-process-and-job-boundary.md)
 
 ## Contributing and security
 

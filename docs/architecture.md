@@ -142,6 +142,14 @@ Artifact collection is a separate injected native boundary. Its plan contains on
 
 The workstation produces a strict non-authoritative `ExecutionReport`. It cannot contain hosted `finalized_at` or workflow provenance. [`protocol/v1`](../protocol/v1) can form an authoritative `ResultRecord` only when a finalizer supplies a valid accepted record, a bound report, canonical finalization time, and matching hosted workflow provenance.
 
+## Windows restricted process boundary
+
+[`internal/platform/windows/process`](../internal/platform/windows/process) implements the native launcher required by the shared lifecycle. It has no `os/exec` or current-user fallback. A broker token source must supply a lease for the configured execution identity, and the launcher independently requires both token user and primary-group SIDs to match the authorized principal.
+
+The launcher re-resolves the approved working directory near launch, builds a Unicode environment from only sanitized entries, and limits inherited handles to the child ends of stdin/stdout/stderr using an extended startup handle list. It calls `CreateProcessAsUserW` suspended, assigns the process to a kill-on-close Job Object, then resumes it. Script bytes flow only through stdin. Normal completion, timeout, and cancellation all reap the full Job Object before the shared lifecycle receives a terminal signal. [ADR 0006](adr/0006-windows-restricted-process-and-job-boundary.md) records the detailed decision.
+
+Local Windows tests exercised actual Job Object termination of a test process and its descendant. This proves the native lifecycle primitive, not the installed identity boundary. The protected logon secret/token source, profile lifecycle, LocalSystem service, and dedicated-account ACL denial remain unimplemented and require isolated E2E evidence.
+
 ## Native enforcement still required
 
 The following mechanisms are not implemented by this checkpoint and remain release blockers:
@@ -150,9 +158,9 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 |---|---|---|
 | Broker service | LocalSystem Windows service | root-owned hardened systemd service |
 | Peer authentication | explicit named-pipe DACL, remote-client rejection, impersonated caller SID verification, mandatory revert | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
-| Identity transition | broker-only protected batch-logon secret, `LogonUserW`, profile/token lifecycle, `CreateProcessAsUserW` | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
+| Identity transition | protected batch-logon token source/profile lifecycle (the token-validating `CreateProcessAsUserW` launcher is implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
 | Filesystem | near-launch final-path recheck and ACL denial (the authorization resolver is implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
-| Process lifecycle | Job Object tree ownership and termination | process group/session with TERM grace then KILL |
+| Process lifecycle | installed-token E2E remains (Job Object ownership/termination is implemented and native-tested) | process group/session with TERM grace then KILL |
 | Result data | native stdout/stderr plumbing and bounded artifacts accessed under execution authority | native stdout/stderr plumbing and bounded artifacts accessed under execution authority |
 
 Hosted Windows/Linux unit tests demonstrate parser, configuration, environment, bounded-capture, and shared fail-closed lifecycle behavior. Fake launchers, processes, timers, resolvers, and collectors are orchestration evidence only. They cannot demonstrate the native rows above; those claims require isolated real-host tests under the actual dedicated identities.
