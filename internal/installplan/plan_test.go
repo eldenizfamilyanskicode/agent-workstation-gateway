@@ -20,8 +20,8 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 		`C:\ProgramData\AgentWorkstationGateway`,
 		`C:\ProgramData\AgentWorkstationGateway\bin`,
 		`C:\ProgramData\AgentWorkstationGateway\state`,
-		`C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
 		`C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
+		`C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
 	}
 	if len(plan.Operations) != len(expectedTargets) {
 		t.Fatalf("unexpected operation count: %d", len(plan.Operations))

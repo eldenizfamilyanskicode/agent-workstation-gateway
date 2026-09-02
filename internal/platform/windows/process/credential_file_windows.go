@@ -3,12 +3,13 @@
 package process
 
 import (
+	"errors"
 	"strings"
 	"unicode/utf16"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/protectedstate"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 )
 
@@ -119,50 +120,13 @@ func credentialFinalPath(handle windows.Handle) (string, error) {
 }
 
 func validateCredentialSecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR) error {
-	owner, _, err := descriptor.Owner()
-	if err != nil || owner == nil ||
-		(!owner.IsWellKnown(windows.WinLocalSystemSid) && !owner.IsWellKnown(windows.WinBuiltinAdministratorsSid)) {
-		return boundaryError("credential-owner-denied")
+	err := protectedstate.ValidateFileDescriptor(descriptor)
+	if err == nil {
+		return nil
 	}
-	control, _, err := descriptor.Control()
-	if err != nil || control&windows.SE_DACL_PRESENT == 0 || control&windows.SE_DACL_PROTECTED == 0 {
-		return boundaryError("credential-acl-not-protected")
+	var failure *protectedstate.Error
+	if errors.As(err, &failure) {
+		return boundaryError(failure.Rule)
 	}
-	dacl, _, err := descriptor.DACL()
-	if err != nil || dacl == nil || dacl.AceCount == 0 {
-		return boundaryError("credential-acl-invalid")
-	}
-
-	systemRead := false
-	administratorsRead := false
-	for index := uint16(0); index < dacl.AceCount; index++ {
-		var ace *windows.ACCESS_ALLOWED_ACE
-		if err := windows.GetAce(dacl, uint32(index), &ace); err != nil || ace == nil ||
-			ace.Header.AceSize < uint16(unsafe.Offsetof(ace.SidStart)+8) || ace.Header.AceFlags&windows.INHERITED_ACE != 0 {
-			return boundaryError("credential-ace-invalid")
-		}
-		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
-			continue
-		}
-		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
-			return boundaryError("credential-ace-type-denied")
-		}
-		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
-		if !sid.IsValid() || int(ace.Header.AceSize) < int(unsafe.Offsetof(ace.SidStart))+sid.Len() {
-			return boundaryError("credential-ace-invalid")
-		}
-		canRead := ace.Mask&windows.FILE_READ_DATA != 0 && ace.Mask&windows.READ_CONTROL != 0
-		switch {
-		case sid.IsWellKnown(windows.WinLocalSystemSid):
-			systemRead = systemRead || canRead
-		case sid.IsWellKnown(windows.WinBuiltinAdministratorsSid):
-			administratorsRead = administratorsRead || canRead
-		default:
-			return boundaryError("credential-ace-principal-denied")
-		}
-	}
-	if !systemRead || !administratorsRead {
-		return boundaryError("credential-acl-readers-incomplete")
-	}
-	return nil
+	return boundaryError("credential-acl-invalid")
 }
