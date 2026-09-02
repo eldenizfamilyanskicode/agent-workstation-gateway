@@ -128,6 +128,55 @@ func TestNamedPipeRoundTripAuthenticatesCurrentPeer(t *testing.T) {
 	}
 }
 
+func TestConnectionContextMethodsRejectCanceledIOBeforeTransfer(t *testing.T) {
+	configuration := currentPeerConfiguration(t)
+	server, err := NewServer(configuration)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	type acceptResult struct {
+		connection *Conn
+		err        error
+	}
+	accepted := make(chan acceptResult, 1)
+	go func() {
+		connection, acceptErr := server.Accept(ctx)
+		accepted <- acceptResult{connection: connection, err: acceptErr}
+	}()
+	client, err := Dial(ctx)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+	result := <-accepted
+	if result.err != nil {
+		t.Fatalf("accept: %v", result.err)
+	}
+	defer result.connection.Close()
+
+	canceled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	if count, err := client.WriteContext(canceled, []byte("not-written")); count != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled write transferred data: count=%d error=%v", count, err)
+	}
+	if count, err := result.connection.ReadContext(canceled, make([]byte, 16)); count != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled read consumed data: count=%d error=%v", count, err)
+	}
+
+	payload := []byte("still-usable")
+	if count, err := client.WriteContext(ctx, payload); err != nil || count != len(payload) {
+		t.Fatalf("context write failed: count=%d error=%v", count, err)
+	}
+	buffer := make([]byte, len(payload))
+	if count, err := result.connection.ReadContext(ctx, buffer); err != nil || count != len(payload) || string(buffer) != string(payload) {
+		t.Fatalf("context read failed: count=%d content=%q error=%v", count, buffer, err)
+	}
+}
+
 func TestNamedPipeRejectsImpersonatedSIDMismatch(t *testing.T) {
 	configuration := currentPeerConfiguration(t)
 	server, err := NewServer(configuration)

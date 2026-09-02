@@ -25,6 +25,10 @@ func dialNative(context.Context) (*connNative, error) {
 	return nil, ipcError("platform-unsupported")
 }
 
-func (*connNative) read([]byte) (int, error)  { return 0, ipcError("platform-unsupported") }
-func (*connNative) write([]byte) (int, error) { return 0, ipcError("platform-unsupported") }
-func (*connNative) close() error              { return nil }
+func (*connNative) read(context.Context, []byte) (int, error) {
+	return 0, ipcError("platform-unsupported")
+}
+func (*connNative) write(context.Context, []byte) (int, error) {
+	return 0, ipcError("platform-unsupported")
+}
+func (*connNative) close() error { return nil }

@@ -64,17 +64,31 @@ func Dial(ctx context.Context) (*Conn, error) {
 }
 
 func (connection *Conn) Read(buffer []byte) (int, error) {
+	return connection.ReadContext(context.Background(), buffer)
+}
+
+func (connection *Conn) ReadContext(ctx context.Context, buffer []byte) (int, error) {
 	if connection == nil || connection.native == nil {
 		return 0, ipcError("connection-invalid")
 	}
-	return connection.native.read(buffer)
+	if ctx == nil {
+		return 0, ipcError("read-context-invalid")
+	}
+	return connection.native.read(ctx, buffer)
 }
 
 func (connection *Conn) Write(buffer []byte) (int, error) {
+	return connection.WriteContext(context.Background(), buffer)
+}
+
+func (connection *Conn) WriteContext(ctx context.Context, buffer []byte) (int, error) {
 	if connection == nil || connection.native == nil {
 		return 0, ipcError("connection-invalid")
 	}
-	return connection.native.write(buffer)
+	if ctx == nil {
+		return 0, ipcError("write-context-invalid")
+	}
+	return connection.native.write(ctx, buffer)
 }
 
 func (connection *Conn) Close() error {

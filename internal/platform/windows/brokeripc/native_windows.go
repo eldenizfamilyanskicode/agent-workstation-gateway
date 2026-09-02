@@ -299,7 +299,7 @@ func connectPipe(ctx context.Context, handle windows.Handle) error {
 	return nil
 }
 
-func (connection *connNative) read(buffer []byte) (int, error) {
+func (connection *connNative) read(ctx context.Context, buffer []byte) (int, error) {
 	if len(buffer) == 0 {
 		return 0, nil
 	}
@@ -309,7 +309,7 @@ func (connection *connNative) read(buffer []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	count, err := readHandle(context.Background(), handle, buffer)
+	count, err := readHandle(ctx, handle, buffer)
 	if errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, windows.ERROR_NO_DATA) {
 		return 0, io.EOF
 	}
@@ -317,12 +317,15 @@ func (connection *connNative) read(buffer []byte) (int, error) {
 		return count, nil
 	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ipcCause("read-canceled", ctx.Err())
+		}
 		return 0, ipcCause("read-failed", err)
 	}
 	return count, nil
 }
 
-func (connection *connNative) write(buffer []byte) (int, error) {
+func (connection *connNative) write(ctx context.Context, buffer []byte) (int, error) {
 	if len(buffer) == 0 {
 		return 0, nil
 	}
@@ -332,8 +335,11 @@ func (connection *connNative) write(buffer []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	count, err := writeHandle(context.Background(), handle, buffer)
+	count, err := writeHandle(ctx, handle, buffer)
 	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ipcCause("write-canceled", ctx.Err())
+		}
 		return 0, ipcCause("write-failed", err)
 	}
 	if count != len(buffer) {
@@ -396,6 +402,12 @@ func overlappedOperation(
 	handle windows.Handle,
 	start func(*windows.Overlapped, *uint32) error,
 ) (int, error) {
+	if ctx == nil {
+		return 0, syscall.EINVAL
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	event, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
 		return 0, err
