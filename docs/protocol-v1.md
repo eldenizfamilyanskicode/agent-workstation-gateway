@@ -110,7 +110,22 @@ Artifact selection is not a filesystem read capability by itself. The later coll
 
 Portable matching is case-sensitive and segment-based. `*`, `?`, and character classes do not cross `/`; a segment exactly equal to `**` matches zero or more complete segments. Native collectors do not delegate matching to a platform shell.
 
-The implemented execution lifecycle couples every reported file to a closeable content bundle. Each reported path must match an accepted pattern in the same group, and each omission must cite an exact accepted pattern. On Windows, the collector hashes and later streams through the same retained no-share-write/delete handle opened under execution authority. Manifest-only reopening under broker authority is forbidden. Broker wire streaming and hosted artifact upload are separate later boundaries.
+The implemented execution lifecycle couples every reported file to a closeable content bundle. Each reported path must match an accepted pattern in the same group, and each omission must cite an exact accepted pattern. On Windows, the collector hashes and later streams through the same retained no-share-write/delete handle opened under execution authority. Manifest-only reopening under broker authority is forbidden. Hosted artifact upload remains a separate later boundary.
+
+## Local broker response stream
+
+The internal workstation handoff is a single terminal stream, not another authoritative ledger format. Its strict preamble schema and synthetic example are under [`runtime`](../runtime). An execution response contains, in order:
+
+1. a preamble with version, execution outcome, and SHA-256 for the exact retained stdout/stderr prefixes;
+2. the canonical validated `ExecutionReport`;
+3. retained stdout frames totaling `report.stdout.retained_bytes`;
+4. retained stderr frames totaling `report.stderr.retained_bytes`;
+5. each artifact's bytes in manifest order, totaling its declared size;
+6. connection EOF.
+
+Every data frame is non-empty and at most 65,536 bytes. Zero-byte logical content has no frame. The receiver verifies exact lengths, retained-output hashes, artifact hashes, and final EOF. Artifact destinations are one response-scoped transaction: partial files abort after any framing, digest, destination, or trailing-data failure and commit only after the whole stream is valid.
+
+A rejection has only the preamble, a coarse closed failure code, and EOF. It carries no report or requester-controlled diagnostic. Neither response form can add `finalized_at` or workflow provenance; only the separate trusted hosted finalizer can create an authoritative `ResultRecord`. See [ADR 0012](adr/0012-bounded-local-broker-response-stream.md).
 
 ## Canonical request and digest
 

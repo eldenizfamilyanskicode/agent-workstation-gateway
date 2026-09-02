@@ -126,10 +126,11 @@ Completed foundation work:
 - rollback-capable Windows approved-root/profile/temp ACL convergence with same-handle validation and exact restricted execution rights (installed-account effective access reserved for isolated verification).
 - fixed Windows named-pipe transport with first-instance/local-only policy, exact protected DACL verification, bounded framing, and exact impersonated control-SID authentication (installed-account and remote-host evidence reserved for isolated verification).
 - Windows artifact collection under exact execution-token impersonation with portable bounded globs, link/final-path enforcement, stable content handles, and explicit omissions (broker upload and installed-token evidence remain).
+- strict one-exchange broker response streaming with canonical reports, bounded retained output, stable artifact-handle chunks, end-to-end length/digest checks, and transactional receiver cleanup (broker composition and upload remain).
 
 Not implemented yet at this checkpoint:
 
-- Go control/broker executables, Linux native IPC, artifact filesystem/runtime implementation, and remaining installed-host integration;
+- Go control/broker executables, Linux native IPC/artifact implementation, and remaining installed-host integration;
 - Windows mutating installer and service lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
@@ -155,6 +156,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0009 — Windows Workload Filesystem ACLs`](docs/adr/0009-windows-workload-filesystem-acls.md)
 - [`ADR 0010 — Windows Authenticated Named-Pipe IPC`](docs/adr/0010-windows-authenticated-named-pipe.md)
 - [`ADR 0011 — Windows Artifacts Under Execution Authority`](docs/adr/0011-windows-execution-authority-artifacts.md)
+- [`ADR 0012 — Bounded Local Broker Response Stream`](docs/adr/0012-bounded-local-broker-response-stream.md)
 
 ## Contributing and security
 
