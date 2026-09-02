@@ -54,12 +54,9 @@ func Build(specification Spec) (Plan, error) {
 	if err := Validate(specification); err != nil {
 		return Plan{}, err
 	}
-	layout := Layout{
-		Root:                specification.InstallationRoot,
-		BinDirectory:        joinWindows(specification.InstallationRoot, "bin"),
-		StateDirectory:      joinWindows(specification.InstallationRoot, "state"),
-		InstallationConfig:  joinWindows(specification.InstallationRoot, "state", "installation.json"),
-		ExecutionCredential: joinWindows(specification.InstallationRoot, "state", "execution-credential.dpapi"),
+	layout, err := WindowsLayout(specification.InstallationRoot)
+	if err != nil {
+		return Plan{}, err
 	}
 	operations := []Operation{
 		{Kind: "ensure_protected_directory", Target: layout.Root},
@@ -76,6 +73,23 @@ func Build(specification Spec) (Plan, error) {
 		Platform:    platformpath.Windows,
 		Layout:      layout,
 		Operations:  operations,
+	}, nil
+}
+
+// WindowsLayout derives every protected installation path from one canonical
+// administrator-selected root. Runtime code must use this same derivation and
+// must not accept individual state paths from requests or environment data.
+func WindowsLayout(installationRoot string) (Layout, error) {
+	if platformpath.ValidateAbsolute(platformpath.Windows, installationRoot) != nil ||
+		platformpath.IsFilesystemRoot(platformpath.Windows, installationRoot) {
+		return Layout{}, planError("installation_root", "invalid-or-filesystem-root")
+	}
+	return Layout{
+		Root:                installationRoot,
+		BinDirectory:        joinWindows(installationRoot, "bin"),
+		StateDirectory:      joinWindows(installationRoot, "state"),
+		InstallationConfig:  joinWindows(installationRoot, "state", "installation.json"),
+		ExecutionCredential: joinWindows(installationRoot, "state", "execution-credential.dpapi"),
 	}, nil
 }
 

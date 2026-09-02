@@ -45,6 +45,31 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 	}
 }
 
+func TestWindowsLayoutDerivesOnlyFixedProtectedPaths(t *testing.T) {
+	layout, err := WindowsLayout(`C:\ProgramData\AgentWorkstationGateway`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := Layout{
+		Root:                `C:\ProgramData\AgentWorkstationGateway`,
+		BinDirectory:        `C:\ProgramData\AgentWorkstationGateway\bin`,
+		StateDirectory:      `C:\ProgramData\AgentWorkstationGateway\state`,
+		InstallationConfig:  `C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
+		ExecutionCredential: `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
+	}
+	if layout != expected {
+		t.Fatalf("unexpected layout: %#v", layout)
+	}
+}
+
+func TestWindowsLayoutRejectsNoncanonicalOrFilesystemRoot(t *testing.T) {
+	for _, root := range []string{`relative\AWG`, `c:\ProgramData\AWG`, `C:\`, `C:\ProgramData\..\AWG`} {
+		if _, err := WindowsLayout(root); err == nil {
+			t.Fatalf("invalid installation root was accepted: %q", root)
+		}
+	}
+}
+
 func TestDecodeWindowsSpecRejectsAuthorityFields(t *testing.T) {
 	encoded := []byte(`{
 		"config_version":1,"platform":"windows","installation_root":"C:\\ProgramData\\AgentWorkstationGateway",
