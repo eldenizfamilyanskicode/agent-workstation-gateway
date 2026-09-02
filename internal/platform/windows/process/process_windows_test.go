@@ -62,6 +62,15 @@ func TestValidateTokenIdentityMatchesUserAndPrimaryGroup(t *testing.T) {
 	if strings.Contains(err.Error(), principal.Identifier) {
 		t.Fatal("token mismatch error echoed identity data")
 	}
+	principal = principalForToken(t, token)
+	principal.PrimaryGroupIdentifier = "S-1-5-21-1000-1000-1000-4343"
+	err = validateTokenIdentity(token, principal)
+	assertBoundaryRule(t, err, "token-primary-group-mismatch")
+}
+
+func TestLauncherRequiresTokenSource(t *testing.T) {
+	_, err := NewLauncher(nil)
+	assertBoundaryRule(t, err, "token-source-required")
 }
 
 func TestCommandLineNeverContainsScriptData(t *testing.T) {
