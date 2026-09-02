@@ -61,15 +61,38 @@ func (process *fakeProcess) terminations() int {
 
 type fakeCollector struct {
 	manifest v1.ArtifactManifest
+	bundle   ArtifactBundle
 	err      error
 	plan     ArtifactPlan
 	calls    int
 }
 
-func (collector *fakeCollector) Collect(_ context.Context, plan ArtifactPlan) (v1.ArtifactManifest, error) {
+func (collector *fakeCollector) Collect(_ context.Context, plan ArtifactPlan) (ArtifactCollection, error) {
 	collector.calls++
 	collector.plan = plan
-	return collector.manifest, collector.err
+	return ArtifactCollection{Manifest: collector.manifest, Bundle: collector.bundle}, collector.err
+}
+
+type fakeArtifactBundle struct {
+	mu     sync.Mutex
+	closed bool
+}
+
+func (*fakeArtifactBundle) Open(string, string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("synthetic artifact")), nil
+}
+
+func (bundle *fakeArtifactBundle) Close() error {
+	bundle.mu.Lock()
+	defer bundle.mu.Unlock()
+	bundle.closed = true
+	return nil
+}
+
+func (bundle *fakeArtifactBundle) isClosed() bool {
+	bundle.mu.Lock()
+	defer bundle.mu.Unlock()
+	return bundle.closed
 }
 
 type sequenceClock struct {
@@ -117,7 +140,8 @@ func TestRunCompletesWithBoundedOutputAndIndependentArtifacts(t *testing.T) {
 	stderr := []byte("warning\n")
 	process := processWithExit(ProcessExit{Code: 0})
 	launcher := &fakeLauncher{process: process, stdout: stdout, stderr: stderr}
-	collector := &fakeCollector{manifest: completeArtifactManifest()}
+	bundle := &fakeArtifactBundle{}
+	collector := &fakeCollector{manifest: completeArtifactManifest(), bundle: bundle}
 	timers := &fakeTimerFactory{}
 	runner := mustRunner(t, launcher, collector, timers)
 
@@ -139,6 +163,12 @@ func TestRunCompletesWithBoundedOutputAndIndependentArtifacts(t *testing.T) {
 	}
 	if output.Report.Artifacts.Status != v1.ArtifactStatusComplete || collector.calls != 1 {
 		t.Fatalf("artifact outcome was not independent: %#v", output.Report.Artifacts)
+	}
+	if output.ArtifactBundle != bundle {
+		t.Fatal("runner dropped valid artifact content bundle")
+	}
+	if err := output.Close(); err != nil || !bundle.isClosed() {
+		t.Fatalf("output did not close artifact bundle: %v", err)
 	}
 	if timers.duration != time.Second {
 		t.Fatalf("unexpected command timer duration: %v", timers.duration)
@@ -180,7 +210,7 @@ func TestRunDistinguishesProcessOutcomes(t *testing.T) {
 			}
 			close(process.exit)
 			launcher := &fakeLauncher{process: process}
-			collector := &fakeCollector{manifest: completeArtifactManifest()}
+			collector := &fakeCollector{manifest: completeArtifactManifest(), bundle: &fakeArtifactBundle{}}
 			runner := mustRunner(t, launcher, collector, &fakeTimerFactory{})
 			output, err := runner.Run(context.Background(), validLaunchPlan(), strings.Repeat("c", 40))
 			if err != nil {
@@ -233,7 +263,7 @@ func TestRunTerminatesTreeOnTimeoutAndCancellation(t *testing.T) {
 
 func TestRunFailsClosedWhenTreeTerminationFails(t *testing.T) {
 	process := &fakeProcess{exit: make(chan ProcessExit), terminateErr: errors.New("synthetic tree failure")}
-	collector := &fakeCollector{manifest: completeArtifactManifest()}
+	collector := &fakeCollector{manifest: completeArtifactManifest(), bundle: &fakeArtifactBundle{}}
 	runner := mustRunner(t, &fakeLauncher{process: process}, collector, &fakeTimerFactory{fire: true})
 	output, err := runner.Run(context.Background(), validLaunchPlan(), strings.Repeat("c", 40))
 	if err != nil {
@@ -246,7 +276,7 @@ func TestRunFailsClosedWhenTreeTerminationFails(t *testing.T) {
 
 func TestRunReportsLaunchFailureAndCleansPartialProcess(t *testing.T) {
 	process := &fakeProcess{exit: make(chan ProcessExit)}
-	collector := &fakeCollector{manifest: completeArtifactManifest()}
+	collector := &fakeCollector{manifest: completeArtifactManifest(), bundle: &fakeArtifactBundle{}}
 	launcher := &fakeLauncher{process: process, err: errors.New("synthetic launch failure")}
 	runner := mustRunner(t, launcher, collector, &fakeTimerFactory{})
 	output, err := runner.Run(context.Background(), validLaunchPlan(), strings.Repeat("c", 40))
@@ -262,7 +292,8 @@ func TestRunReportsLaunchFailureAndCleansPartialProcess(t *testing.T) {
 }
 
 func TestRunPreservesCommandOutcomeWhenArtifactsFail(t *testing.T) {
-	collector := &fakeCollector{err: errors.New("synthetic collection failure")}
+	bundle := &fakeArtifactBundle{}
+	collector := &fakeCollector{bundle: bundle, err: errors.New("synthetic collection failure")}
 	runner := mustRunner(t, &fakeLauncher{process: processWithExit(ProcessExit{Code: 0})}, collector, &fakeTimerFactory{})
 	output, err := runner.Run(context.Background(), validLaunchPlan(), strings.Repeat("c", 40))
 	if err != nil {
@@ -273,6 +304,57 @@ func TestRunPreservesCommandOutcomeWhenArtifactsFail(t *testing.T) {
 	}
 	if len(output.Report.Artifacts.Omissions) != 1 || output.Report.Artifacts.Omissions[0].Reason != v1.ArtifactOmissionCollectionFailed {
 		t.Fatalf("artifact failure was not explicit: %#v", output.Report.Artifacts)
+	}
+	if output.ArtifactBundle != nil || !bundle.isClosed() {
+		t.Fatal("failed collection retained content bundle")
+	}
+}
+
+func TestRunRejectsUnboundArtifactContentAndClosesBundle(t *testing.T) {
+	tests := []struct {
+		name     string
+		manifest v1.ArtifactManifest
+		bundle   ArtifactBundle
+	}{
+		{name: "files require bundle", manifest: completeArtifactManifest()},
+		{
+			name: "file must match selection",
+			manifest: v1.ArtifactManifest{
+				Status: v1.ArtifactStatusComplete,
+				Files: []v1.ArtifactFile{{
+					Group: "results", Path: "unselected.txt", SHA256: strings.Repeat("d", 64), SizeBytes: 17,
+				}},
+				Omissions: []v1.ArtifactOmission{},
+			},
+			bundle: &fakeArtifactBundle{},
+		},
+		{
+			name: "omission must name selection",
+			manifest: v1.ArtifactManifest{
+				Status: v1.ArtifactStatusFailed,
+				Files:  []v1.ArtifactFile{},
+				Omissions: []v1.ArtifactOmission{{
+					Group: "results", Pattern: "other/*.json", Reason: v1.ArtifactOmissionNoMatch,
+				}},
+			},
+			bundle: &fakeArtifactBundle{},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			collector := &fakeCollector{manifest: test.manifest, bundle: test.bundle}
+			runner := mustRunner(t, &fakeLauncher{process: processWithExit(ProcessExit{Code: 0})}, collector, &fakeTimerFactory{})
+			output, err := runner.Run(context.Background(), validLaunchPlan(), strings.Repeat("c", 40))
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if output.Report.Artifacts.Status != v1.ArtifactStatusFailed || output.ArtifactBundle != nil {
+				t.Fatalf("unbound artifact collection admitted: %#v", output)
+			}
+			if bundle, ok := test.bundle.(*fakeArtifactBundle); ok && !bundle.isClosed() {
+				t.Fatal("rejected artifact bundle was not closed")
+			}
+		})
 	}
 }
 

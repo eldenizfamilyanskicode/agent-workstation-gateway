@@ -52,7 +52,22 @@ type ArtifactPlan struct {
 }
 
 type ArtifactCollector interface {
-	Collect(context.Context, ArtifactPlan) (v1.ArtifactManifest, error)
+	Collect(context.Context, ArtifactPlan) (ArtifactCollection, error)
+}
+
+// ArtifactCollection couples report metadata to content handles opened under
+// native execution authority. A collection with files requires a Bundle.
+type ArtifactCollection struct {
+	Manifest v1.ArtifactManifest
+	Bundle   ArtifactBundle
+}
+
+// ArtifactBundle owns stable collected content until the control response has
+// streamed it. Open may expose only exact group/path pairs in its Manifest and
+// Close must be idempotent.
+type ArtifactBundle interface {
+	Open(group string, path string) (io.ReadCloser, error)
+	Close() error
 }
 
 type Clock interface {
@@ -76,7 +91,15 @@ type Options struct {
 }
 
 type Output struct {
-	Report v1.ExecutionReport
-	Stdout []byte
-	Stderr []byte
+	Report         v1.ExecutionReport
+	Stdout         []byte
+	Stderr         []byte
+	ArtifactBundle ArtifactBundle
+}
+
+func (output Output) Close() error {
+	if output.ArtifactBundle == nil {
+		return nil
+	}
+	return output.ArtifactBundle.Close()
 }

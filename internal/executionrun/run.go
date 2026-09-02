@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/artifactpattern"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/executionpolicy"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/outputcapture"
@@ -119,17 +120,23 @@ func (runner *Runner) Run(ctx context.Context, plan executionpolicy.LaunchPlan, 
 	}
 
 	artifacts := failedArtifactManifest(plan.Artifacts)
+	var artifactBundle ArtifactBundle
 	if safeToCollect {
-		artifacts = runner.collectArtifacts(plan)
+		artifacts, artifactBundle = runner.collectArtifacts(plan)
 	}
 	report := assembleReport(plan, gatewaySourceSHA, status, exitCode, startedAt, finishedAt, stdout, stderr, artifacts)
 	if err := v1.ValidateExecutionReport(report); err != nil {
+		closeArtifactBundle(artifactBundle)
+		artifactBundle = nil
 		report.Artifacts = failedArtifactManifest(plan.Artifacts)
 		if fallbackErr := v1.ValidateExecutionReport(report); fallbackErr != nil {
 			return Output{}, errors.Join(ErrInvalidExecutionReport, fallbackErr)
 		}
 	}
-	return Output{Report: report, Stdout: stdout.Retained, Stderr: stderr.Retained}, nil
+	return Output{
+		Report: report, Stdout: stdout.Retained, Stderr: stderr.Retained,
+		ArtifactBundle: artifactBundle,
+	}, nil
 }
 
 func (runner *Runner) awaitProcess(ctx context.Context, plan executionpolicy.LaunchPlan, process Process) (v1.CommandStatus, *int64, bool) {
@@ -199,10 +206,14 @@ func assembleReport(
 	}
 }
 
-func artifactGroupsAllowed(manifest v1.ArtifactManifest, selections []v1.ArtifactSelection) bool {
-	groups := make(map[string]struct{}, len(selections))
+func artifactCollectionAllowed(manifest v1.ArtifactManifest, selections []v1.ArtifactSelection) bool {
+	groups := make(map[string]map[string]struct{}, len(selections))
 	for _, selection := range selections {
-		groups[selection.Name] = struct{}{}
+		patterns := make(map[string]struct{}, len(selection.Paths))
+		for _, pattern := range selection.Paths {
+			patterns[pattern] = struct{}{}
+		}
+		groups[selection.Name] = patterns
 	}
 	if len(groups) == 0 {
 		return manifest.Status == v1.ArtifactStatusNotRequested && len(manifest.Files) == 0 && len(manifest.Omissions) == 0
@@ -211,12 +222,28 @@ func artifactGroupsAllowed(manifest v1.ArtifactManifest, selections []v1.Artifac
 		return false
 	}
 	for _, file := range manifest.Files {
-		if _, ok := groups[file.Group]; !ok {
+		patterns, ok := groups[file.Group]
+		if !ok {
+			return false
+		}
+		matched := false
+		for pattern := range patterns {
+			patternMatch, err := artifactpattern.Match(pattern, file.Path)
+			if err != nil {
+				return false
+			}
+			matched = matched || patternMatch
+		}
+		if !matched {
 			return false
 		}
 	}
 	for _, omission := range manifest.Omissions {
-		if _, ok := groups[omission.Group]; !ok {
+		patterns, ok := groups[omission.Group]
+		if !ok {
+			return false
+		}
+		if _, ok := patterns[omission.Pattern]; !ok {
 			return false
 		}
 	}
@@ -238,25 +265,37 @@ func failedArtifactManifest(selections []v1.ArtifactSelection) v1.ArtifactManife
 	return v1.ArtifactManifest{Status: v1.ArtifactStatusFailed, Files: []v1.ArtifactFile{}, Omissions: omissions}
 }
 
-func (runner *Runner) collectArtifacts(plan executionpolicy.LaunchPlan) v1.ArtifactManifest {
+func (runner *Runner) collectArtifacts(plan executionpolicy.LaunchPlan) (v1.ArtifactManifest, ArtifactBundle) {
 	if len(plan.Artifacts) == 0 {
-		return failedArtifactManifest(nil)
+		return failedArtifactManifest(nil), nil
 	}
 	if runner.collector == nil {
-		return failedArtifactManifest(plan.Artifacts)
+		return failedArtifactManifest(plan.Artifacts), nil
 	}
 	collectionContext, cancel := context.WithTimeout(context.Background(), runner.artifactCollectionTimeout)
 	defer cancel()
-	manifest, err := runner.collector.Collect(collectionContext, ArtifactPlan{
+	collection, err := runner.collector.Collect(collectionContext, ArtifactPlan{
 		ExecutionIdentity: plan.ExecutionIdentity,
 		WorkingDirectory:  plan.WorkingDirectory,
 		ApprovedRoot:      plan.ApprovedRoot,
 		Selections:        cloneSelections(plan.Artifacts),
 	})
-	if err != nil || !artifactGroupsAllowed(manifest, plan.Artifacts) {
-		return failedArtifactManifest(plan.Artifacts)
+	if err != nil || !artifactCollectionAllowed(collection.Manifest, plan.Artifacts) ||
+		(len(collection.Manifest.Files) > 0 && collection.Bundle == nil) {
+		closeArtifactBundle(collection.Bundle)
+		return failedArtifactManifest(plan.Artifacts), nil
 	}
-	return manifest
+	if len(collection.Manifest.Files) == 0 && collection.Bundle != nil {
+		closeArtifactBundle(collection.Bundle)
+		collection.Bundle = nil
+	}
+	return collection.Manifest, collection.Bundle
+}
+
+func closeArtifactBundle(bundle ArtifactBundle) {
+	if bundle != nil {
+		_ = bundle.Close()
+	}
 }
 
 func cloneSelections(selections []v1.ArtifactSelection) []v1.ArtifactSelection {
