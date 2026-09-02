@@ -1,6 +1,6 @@
 # Agent Workstation Gateway
 
-> **Pre-alpha:** the threat model, architecture decisions, and public repository foundation exist. The execution protocol, Go runtime, installers, public CI, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
+> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, and hosted CI foundation exist. The execution protocol, gateway runtime, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
 
 Agent Workstation Gateway (AWG) is a vendor-neutral gateway for letting a **trusted AI/development agent** request bounded work on a user's workstation while keeping public source code separate from workstation execution authority.
 
@@ -77,7 +77,7 @@ Active public workflows may not target `self-hosted` runners. Real hardware smok
 
 Public examples use synthetic identities and paths only. See [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`AGENTS.md`](AGENTS.md).
 
-Before publication, contributors can run the project safety gate described in [docs/public-safety.md](docs/public-safety.md). It scans current/staged Git state and reachable history without connecting to a workstation control plane.
+Before publication, contributors can run the project safety gate described in [docs/public-safety.md](docs/public-safety.md). It scans current/staged Git state and reachable history without connecting to a workstation control plane. The active public CI runs the same full-history gate, formatting, vet, tests, and builds on disposable GitHub-hosted Windows and Linux runners.
 
 ## Implementation direction
 
@@ -109,14 +109,14 @@ Completed foundation work:
 - private-control GitHub transport ADR;
 - Go runtime/packaging ADR;
 - Apache-2.0 license decision;
-- public security, contribution, and agent-development policies.
-- local public/workflow safety scanner with reachable-history checks.
+- public security, contribution, and agent-development policies;
+- local public/workflow safety scanner with reachable-history checks;
+- hosted-only public CI verified on GitHub's Windows and Linux runner pools.
 
 Not implemented yet at this checkpoint:
 
 - protocol schemas and compatibility tests;
 - Go CLI/control/broker runtime;
-- safe public GitHub-hosted CI;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
