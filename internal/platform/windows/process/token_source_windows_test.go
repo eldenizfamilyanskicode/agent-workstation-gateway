@@ -32,9 +32,9 @@ func TestCredentialSecurityDescriptorRequiresNarrowProtectedReaders(t *testing.T
 	}{
 		{name: "accepted", sddl: "O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)"},
 		{name: "unprotected", sddl: "O:SYG:SYD:(A;;FA;;;SY)(A;;FA;;;BA)", rule: "credential-acl-not-protected"},
-		{name: "untrusted reader", sddl: "O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;WD)", rule: "credential-ace-principal-denied"},
+		{name: "untrusted reader", sddl: "O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;WD)", rule: "credential-acl-not-exact"},
 		{name: "untrusted owner", sddl: "O:WDG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)", rule: "credential-owner-denied"},
-		{name: "missing system", sddl: "O:BAG:SYD:P(A;;FA;;;BA)", rule: "credential-acl-readers-incomplete"},
+		{name: "missing system", sddl: "O:BAG:SYD:P(A;;FA;;;BA)", rule: "credential-acl-not-exact"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
