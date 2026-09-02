@@ -209,8 +209,12 @@ func TestJobObjectHelper(t *testing.T) {
 			os.Exit(3)
 		}
 		pidFile := os.Getenv(helperPIDFileEnvironment)
-		if err := os.WriteFile(pidFile, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
+		temporaryPIDFile := pidFile + ".tmp"
+		if err := os.WriteFile(temporaryPIDFile, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
 			os.Exit(4)
+		}
+		if err := os.Rename(temporaryPIDFile, pidFile); err != nil {
+			os.Exit(5)
 		}
 		time.Sleep(time.Minute)
 	case "child":
