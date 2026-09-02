@@ -3,6 +3,7 @@
 package filesystem
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -36,6 +37,7 @@ type change struct {
 	path              string
 	original          *windows.SECURITY_DESCRIPTOR
 	originalProtected bool
+	protectionChanged bool
 	created           bool
 	discarded         bool
 }
@@ -191,9 +193,14 @@ func convergeIsolatedHandle(
 			_ = windows.CloseHandle(handle)
 			return nil, err
 		}
+		if dacl, _, daclErr := original.DACL(); daclErr != nil || dacl == nil {
+			_ = windows.CloseHandle(handle)
+			return nil, filesystemError("isolated-original-dacl-required")
+		}
 	}
 	result = &change{
-		handle: handle, path: path, original: original, originalProtected: originalProtected, created: created,
+		handle: handle, path: path, original: original, originalProtected: originalProtected,
+		protectionChanged: true, created: created,
 	}
 	defer rollbackFailedChange(result, &result, &resultErr, "isolated")
 	descriptor, err := isolatedDescriptor(sid)
@@ -248,15 +255,18 @@ func (item *change) rollbackLocked() error {
 		if err != nil || dacl == nil {
 			return filesystemError("rollback-descriptor-invalid")
 		}
-		protection := protectionDisabled
-		if item.originalProtected {
-			protection = protectionEnabled
+		protection := protectionUnchanged
+		if item.protectionChanged {
+			protection = protectionDisabled
+			if item.originalProtected {
+				protection = protectionEnabled
+			}
 		}
 		if err := setDACL(item.handle, dacl, protection); err != nil {
 			return filesystemError("rollback-acl-restore-failed")
 		}
 		actual, err := queryDescriptor(item.handle)
-		if err != nil || actual.String() != item.original.String() {
+		if err != nil || !descriptorsEquivalent(actual, item.original) {
 			return filesystemError("rollback-acl-verification-failed")
 		}
 		return nil
@@ -559,6 +569,40 @@ func descriptorProtected(descriptor *windows.SECURITY_DESCRIPTOR) (bool, error) 
 		return false, filesystemError("descriptor-control-invalid")
 	}
 	return control&windows.SE_DACL_PROTECTED != 0, nil
+}
+
+func descriptorsEquivalent(left *windows.SECURITY_DESCRIPTOR, right *windows.SECURITY_DESCRIPTOR) bool {
+	leftProtected, leftErr := descriptorProtected(left)
+	rightProtected, rightErr := descriptorProtected(right)
+	if leftErr != nil || rightErr != nil || leftProtected != rightProtected {
+		return false
+	}
+	leftOwner, _, leftErr := left.Owner()
+	rightOwner, _, rightErr := right.Owner()
+	if leftErr != nil || rightErr != nil || leftOwner == nil || rightOwner == nil || !leftOwner.Equals(rightOwner) {
+		return false
+	}
+	leftDACL, _, leftErr := left.DACL()
+	rightDACL, _, rightErr := right.DACL()
+	if leftErr != nil || rightErr != nil || leftDACL == nil || rightDACL == nil || leftDACL.AceCount != rightDACL.AceCount {
+		return false
+	}
+	for index := uint32(0); index < uint32(leftDACL.AceCount); index++ {
+		leftACE, leftErr := rawACE(leftDACL, index)
+		rightACE, rightErr := rawACE(rightDACL, index)
+		if leftErr != nil || rightErr != nil || !bytes.Equal(leftACE, rightACE) {
+			return false
+		}
+	}
+	return true
+}
+
+func rawACE(dacl *windows.ACL, index uint32) ([]byte, error) {
+	var ace *windows.ACCESS_ALLOWED_ACE
+	if err := windows.GetAce(dacl, index, &ace); err != nil || ace == nil || ace.Header.AceSize < uint16(unsafe.Sizeof(windows.ACE_HEADER{})) {
+		return nil, filesystemError("ace-query-failed")
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(ace)), int(ace.Header.AceSize)), nil
 }
 
 func executionSID(identifier string) (*windows.SID, error) {

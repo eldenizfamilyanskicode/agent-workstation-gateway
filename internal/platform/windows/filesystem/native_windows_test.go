@@ -86,6 +86,27 @@ func TestFailureCleanupOwnsChangeAfterNamedResultIsCleared(t *testing.T) {
 	assertFilesystemError(t, resultErr, "approved-failure-rollback-failed")
 }
 
+func TestDescriptorEquivalenceIgnoresOnlyAutoInheritanceControl(t *testing.T) {
+	left, err := windows.SecurityDescriptorFromString("O:BAD:(A;OICI;FA;;;BA)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := windows.SecurityDescriptorFromString("O:BAD:AI(A;OICI;FA;;;BA)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !descriptorsEquivalent(left, right) {
+		t.Fatal("equivalent ordered ACEs differed only by auto-inheritance bookkeeping")
+	}
+	different, err := windows.SecurityDescriptorFromString("O:BAD:AI(A;OICI;FR;;;BA)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptorsEquivalent(left, different) {
+		t.Fatal("descriptor equivalence ignored an access-mask change")
+	}
+}
+
 func TestApprovedRootConvergenceAndRollbackUseOwnedHandle(t *testing.T) {
 	configuration, approved, _, _ := temporaryConfiguration(t)
 	native, err := New(configuration)
