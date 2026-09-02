@@ -10,6 +10,7 @@ import (
 
 func TestMachineCredentialProtectionRoundTrip(t *testing.T) {
 	password := []byte("Synthetic-only-password-7f12!")
+	defer zeroBytes(password)
 	protected, err := ProtectPassword(password)
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +36,7 @@ func TestMachineCredentialProtectionRoundTrip(t *testing.T) {
 
 func TestMachineCredentialProtectionRejectsTampering(t *testing.T) {
 	password := []byte("Synthetic-only-password-19ac!")
+	defer zeroBytes(password)
 	protected, err := ProtectPassword(password)
 	if err != nil {
 		t.Fatal(err)
