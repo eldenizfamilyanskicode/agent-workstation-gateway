@@ -121,11 +121,14 @@ The internal workstation handoff is a single terminal stream, not another author
 3. retained stdout frames totaling `report.stdout.retained_bytes`;
 4. retained stderr frames totaling `report.stderr.retained_bytes`;
 5. each artifact's bytes in manifest order, totaling its declared size;
-6. connection EOF.
+6. a fixed terminal marker, followed by a fixed client acknowledgement and server close;
+7. connection EOF observed by the client.
 
-Every data frame is non-empty and at most 65,536 bytes. Zero-byte logical content has no frame. The receiver verifies exact lengths, retained-output hashes, artifact hashes, and final EOF. Artifact destinations are one response-scoped transaction: partial files abort after any framing, digest, destination, or trailing-data failure and commit only after the whole stream is valid.
+Every data frame is non-empty and at most 65,536 bytes. Zero-byte logical content has no frame. The receiver verifies exact lengths, retained-output hashes, artifact hashes, the `AWG\x01DONE`/`AWG\x01ACK` completion exchange, and final EOF. Artifact destinations are one response-scoped transaction: partial files abort after any framing, digest, destination, marker, acknowledgement, or close failure and commit only after the whole stream is valid. The completion exchange is necessary because immediate Windows message-pipe disconnect can otherwise discard a response tail that the client has not consumed.
 
-A rejection has only the preamble, a coarse closed failure code, and EOF. It carries no report or requester-controlled diagnostic. Neither response form can add `finalized_at` or workflow provenance; only the separate trusted hosted finalizer can create an authoritative `ResultRecord`. See [ADR 0012](adr/0012-bounded-local-broker-response-stream.md).
+A rejection has only the preamble's coarse closed failure code followed by the same completion acknowledgement and EOF; it has no report or requester-controlled diagnostic. Neither response form can add `finalized_at` or workflow provenance; only the separate trusted hosted finalizer can create an authoritative `ResultRecord`. See [ADR 0012](adr/0012-bounded-local-broker-response-stream.md).
+
+The broker session reads exactly one execute envelope under fixed local I/O deadlines, authorizes before calling the execution lifecycle, binds the returned report again, and then performs exactly one terminal exchange. Those deadlines and coarse failure mappings are installed implementation policy, never request fields. See [ADR 0013](adr/0013-bounded-broker-session-orchestration.md).
 
 ## Canonical request and digest
 

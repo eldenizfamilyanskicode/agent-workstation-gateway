@@ -22,6 +22,8 @@ response preamble
 [artifact 1 chunks]
 ...
 [artifact N chunks]
+[terminal marker]
+client acknowledgement
 connection EOF
 ```
 
@@ -41,7 +43,7 @@ The next execution frame is the canonical validated protocol v1 `ExecutionReport
 
 Data uses non-empty frames of at most 65,536 bytes. Zero-length output or artifacts consume no data frame. Artifact payloads follow `report.artifacts.files` order and use the manifest's exact size and SHA-256. The writer opens only the exact group/path pair through the lifecycle-owned artifact bundle, streams from that handle, checks EOF and digest, closes each reader, and closes the bundle on every terminal path.
 
-The receiver allocates only the protocol-bounded retained output. It streams artifacts into a response-scoped destination transaction. Relative artifact identities come only from the already validated report. A transaction is committed only after every destination is closed, every declared byte count and digest matches, and EOF proves that no trailing frame exists. Truncation, overrun, digest mismatch, destination error, missing sink, or trailing data aborts the transaction.
+The receiver allocates only the protocol-bounded retained output. It streams artifacts into a response-scoped destination transaction. Relative artifact identities come only from the already validated report. After every destination, declared byte count, and digest validates, the server sends the fixed `AWG\x01DONE` marker. The client returns the fixed `AWG\x01ACK` frame, the server closes, and the client requires EOF before committing. This handshake prevents Windows message-pipe disconnect from discarding an unread response tail without replacing end-of-stream validation. Truncation, overrun, digest mismatch, marker/ack error, destination error, missing sink, or data in place of terminal completion aborts the transaction.
 
 The wire package does not choose a filesystem destination or upload service. A later control client owns that policy under the control identity. The broker-side runtime must close the connection after its one response; an incomplete stream is a transport failure, not an authoritative result.
 
@@ -51,5 +53,5 @@ The wire package does not choose a filesystem destination or upload service. A l
 - Receivers can reject corruption and clean partial destinations without trusting frame boundaries alone.
 - Retained output is additionally bound even when the full stream was truncated.
 - The manifest order is protocol-significant for the local stream.
-- There is no resume within a connection. A broken response must be discarded; higher-level retry policy must not silently execute a new attempt under the same terminal identity.
+- There is no resume within a connection. A broken or unacknowledged response must be discarded; higher-level retry policy must not silently execute a new attempt under the same terminal identity.
 - The contract does not implement authenticated IPC, the broker execution loop, a control-side filesystem sink, GitHub upload, hosted finalization, or service lifecycle. Those remain separate authority boundaries.
