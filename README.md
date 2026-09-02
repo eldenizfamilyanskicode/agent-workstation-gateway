@@ -77,6 +77,8 @@ Active public workflows may not target `self-hosted` runners. Real hardware smok
 
 Public examples use synthetic identities and paths only. See [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`AGENTS.md`](AGENTS.md).
 
+Before publication, contributors can run the project safety gate described in [docs/public-safety.md](docs/public-safety.md). It scans current/staged Git state and reachable history without connecting to a workstation control plane.
+
 ## Implementation direction
 
 Security-critical product code is written in Go and packaged as self-contained native binaries where practical. The conceptual executable split is:
@@ -108,12 +110,12 @@ Completed foundation work:
 - Go runtime/packaging ADR;
 - Apache-2.0 license decision;
 - public security, contribution, and agent-development policies.
+- local public/workflow safety scanner with reachable-history checks.
 
 Not implemented yet at this checkpoint:
 
 - protocol schemas and compatibility tests;
 - Go CLI/control/broker runtime;
-- public-safety and workflow-safety scanners;
 - safe public GitHub-hosted CI;
 - Windows installer/service/ACL lifecycle;
 - private control repository bootstrap;
