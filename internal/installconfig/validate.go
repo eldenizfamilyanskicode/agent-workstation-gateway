@@ -19,6 +19,7 @@ const (
 var principalNamePattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,63}$`)
 var windowsSIDPattern = regexp.MustCompile(`^S-1-[0-9]+(?:-[0-9]+){1,14}$`)
 var linuxUIDPattern = regexp.MustCompile(`^uid:[1-9][0-9]{0,9}$`)
+var linuxGIDPattern = regexp.MustCompile(`^gid:[1-9][0-9]{0,9}$`)
 
 var supportedCapabilities = map[Capability]struct{}{
 	CapabilityDocker: {},
@@ -70,6 +71,9 @@ func validatePrincipal(field string, platform platformpath.Platform, principal P
 		if !windowsSIDPattern.MatchString(principal.Identifier) {
 			return configError(field+".identifier", "invalid-windows-sid")
 		}
+		if !windowsSIDPattern.MatchString(principal.PrimaryGroupIdentifier) {
+			return configError(field+".primary_group_identifier", "invalid-windows-sid")
+		}
 	case platformpath.Linux:
 		if !linuxUIDPattern.MatchString(principal.Identifier) {
 			return configError(field+".identifier", "invalid-linux-uid")
@@ -77,6 +81,13 @@ func validatePrincipal(field string, platform platformpath.Platform, principal P
 		uid, err := strconv.ParseUint(strings.TrimPrefix(principal.Identifier, "uid:"), 10, 32)
 		if err != nil || uid == 0 || uid == 4294967295 {
 			return configError(field+".identifier", "invalid-linux-uid")
+		}
+		if !linuxGIDPattern.MatchString(principal.PrimaryGroupIdentifier) {
+			return configError(field+".primary_group_identifier", "invalid-linux-gid")
+		}
+		gid, err := strconv.ParseUint(strings.TrimPrefix(principal.PrimaryGroupIdentifier, "gid:"), 10, 32)
+		if err != nil || gid == 0 || gid == 4294967295 {
+			return configError(field+".primary_group_identifier", "invalid-linux-gid")
 		}
 	}
 	return nil

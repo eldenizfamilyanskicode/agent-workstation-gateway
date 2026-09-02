@@ -160,10 +160,10 @@ func windowsConfig() installconfig.Config {
 		ConfigVersion: installconfig.CurrentVersion,
 		Platform:      platformpath.Windows,
 		ControlIdentity: installconfig.Principal{
-			Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001",
+			Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001", PrimaryGroupIdentifier: "S-1-5-32-545",
 		},
 		ExecutionIdentity: installconfig.Principal{
-			Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002",
+			Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002", PrimaryGroupIdentifier: "S-1-5-32-545",
 		},
 		ApprovedRoots: []string{`C:\Users\Alice\Projects`},
 		Shells: []installconfig.ShellBinding{
@@ -179,10 +179,10 @@ func linuxConfig() installconfig.Config {
 		ConfigVersion: installconfig.CurrentVersion,
 		Platform:      platformpath.Linux,
 		ControlIdentity: installconfig.Principal{
-			Name: "awg-control", Identifier: "uid:1001",
+			Name: "awg-control", Identifier: "uid:1001", PrimaryGroupIdentifier: "gid:1001",
 		},
 		ExecutionIdentity: installconfig.Principal{
-			Name: "awg-exec", Identifier: "uid:1002",
+			Name: "awg-exec", Identifier: "uid:1002", PrimaryGroupIdentifier: "gid:1002",
 		},
 		ApprovedRoots: []string{"/srv/awg/projects"},
 		Shells: []installconfig.ShellBinding{

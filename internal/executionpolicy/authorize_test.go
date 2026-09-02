@@ -133,8 +133,8 @@ func TestAuthorizeCopiesRequestAndConfigurationSlices(t *testing.T) {
 func policyWindowsConfig() installconfig.Config {
 	return installconfig.Config{
 		ConfigVersion: installconfig.CurrentVersion, Platform: platformpath.Windows,
-		ControlIdentity:   installconfig.Principal{Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001"},
-		ExecutionIdentity: installconfig.Principal{Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002"},
+		ControlIdentity:   installconfig.Principal{Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001", PrimaryGroupIdentifier: "S-1-5-32-545"},
+		ExecutionIdentity: installconfig.Principal{Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002", PrimaryGroupIdentifier: "S-1-5-32-545"},
 		ApprovedRoots:     []string{`C:\Users\Alice\Projects`},
 		Shells:            []installconfig.ShellBinding{{Shell: v1.ShellPwsh, Executable: `C:\Program Files\PowerShell\7\pwsh.exe`}},
 		ProfileRoot:       `C:\ProgramData\AWG\Profiles\Exec`, TempRoot: `C:\ProgramData\AWG\Temp`,

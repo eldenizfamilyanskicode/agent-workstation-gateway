@@ -29,8 +29,9 @@ type Config struct {
 }
 
 type Principal struct {
-	Name       string `json:"name"`
-	Identifier string `json:"identifier"`
+	Name                   string `json:"name"`
+	Identifier             string `json:"identifier"`
+	PrimaryGroupIdentifier string `json:"primary_group_identifier"`
 }
 
 type ShellBinding struct {

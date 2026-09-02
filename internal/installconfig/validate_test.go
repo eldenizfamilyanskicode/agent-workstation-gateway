@@ -29,6 +29,7 @@ func TestValidateRejectsIdentityRootAndStateBoundaryViolations(t *testing.T) {
 		{name: "platform", alter: func(config *Config) { config.Platform = "other" }, field: "platform", rule: "unsupported-platform"},
 		{name: "principal name", alter: func(config *Config) { config.ControlIdentity.Name = "Administrator" }, field: "control_identity.name", rule: "invalid-name"},
 		{name: "principal sid", alter: func(config *Config) { config.ExecutionIdentity.Identifier = "awg-exec" }, field: "execution_identity.identifier", rule: "invalid-windows-sid"},
+		{name: "primary group sid", alter: func(config *Config) { config.ExecutionIdentity.PrimaryGroupIdentifier = "users" }, field: "execution_identity.primary_group_identifier", rule: "invalid-windows-sid"},
 		{name: "same identity", alter: func(config *Config) { config.ExecutionIdentity.Identifier = config.ControlIdentity.Identifier }, field: "execution_identity", rule: "must-differ-from-control"},
 		{name: "no roots", alter: func(config *Config) { config.ApprovedRoots = []string{} }, field: "approved_roots", rule: "outside-count-limit"},
 		{name: "drive root", alter: func(config *Config) { config.ApprovedRoots = []string{`C:\`} }, field: "approved_roots", rule: "filesystem-root-forbidden"},
@@ -86,6 +87,9 @@ func TestValidateRejectsInvalidLinuxUID(t *testing.T) {
 	configuration := validLinuxConfig()
 	configuration.ExecutionIdentity.Identifier = "uid:4294967295"
 	assertConfigError(t, Validate(configuration), "execution_identity.identifier", "invalid-linux-uid")
+	configuration = validLinuxConfig()
+	configuration.ExecutionIdentity.PrimaryGroupIdentifier = "gid:4294967295"
+	assertConfigError(t, Validate(configuration), "execution_identity.primary_group_identifier", "invalid-linux-gid")
 }
 
 func validWindowsConfig() Config {
@@ -93,10 +97,10 @@ func validWindowsConfig() Config {
 		ConfigVersion: CurrentVersion,
 		Platform:      platformpath.Windows,
 		ControlIdentity: Principal{
-			Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001",
+			Name: "awg-control", Identifier: "S-1-5-21-1000-1000-1000-1001", PrimaryGroupIdentifier: "S-1-5-32-545",
 		},
 		ExecutionIdentity: Principal{
-			Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002",
+			Name: "awg-exec", Identifier: "S-1-5-21-1000-1000-1000-1002", PrimaryGroupIdentifier: "S-1-5-32-545",
 		},
 		ApprovedRoots: []string{`C:\Users\Alice\Projects`},
 		Shells: []ShellBinding{
@@ -114,10 +118,10 @@ func validLinuxConfig() Config {
 		ConfigVersion: CurrentVersion,
 		Platform:      platformpath.Linux,
 		ControlIdentity: Principal{
-			Name: "awg-control", Identifier: "uid:1001",
+			Name: "awg-control", Identifier: "uid:1001", PrimaryGroupIdentifier: "gid:1001",
 		},
 		ExecutionIdentity: Principal{
-			Name: "awg-exec", Identifier: "uid:1002",
+			Name: "awg-exec", Identifier: "uid:1002", PrimaryGroupIdentifier: "gid:1002",
 		},
 		ApprovedRoots: []string{"/srv/awg/projects"},
 		Shells: []ShellBinding{
