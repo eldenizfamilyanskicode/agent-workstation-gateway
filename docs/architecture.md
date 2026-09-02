@@ -91,7 +91,7 @@ There are no fields or operations for:
 
 Those names are rejected as unknown data. Administrative lifecycle operations remain local elevated CLI/installer actions and must not be added to the runner-facing endpoint.
 
-The envelope contract does not authenticate a caller. The native Windows named pipe or Linux Unix socket must authenticate the peer before accepting the envelope.
+The envelope contract does not authenticate a caller by itself. On Windows, [`internal/platform/windows/brokeripc`](../internal/platform/windows/brokeripc) supplies the implemented fixed named-pipe boundary: an exact protected DACL, first-instance/local-only modes, a fixed authentication preface, and exact impersonated TokenUser SID authorization before it exposes framed envelope bytes. [ADR 0010](adr/0010-windows-authenticated-named-pipe.md) records the details and evidence limits. The Linux Unix-socket peer boundary remains unimplemented.
 
 ## Shared launch authorization
 
@@ -171,7 +171,7 @@ The following mechanisms are not implemented by this checkpoint and remain relea
 | Boundary | Windows requirement | Linux requirement |
 |---|---|---|
 | Broker service | LocalSystem Windows service | root-owned hardened systemd service |
-| Peer authentication | explicit named-pipe DACL, remote-client rejection, impersonated caller SID verification, mandatory revert | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
+| Peer authentication | mechanism implemented: exact named-pipe DACL, first-instance/remote-client rejection, impersonated caller SID verification, mandatory revert; installed-account/remote-host E2E remains | filesystem socket owner/group/mode plus `SO_PEERCRED` UID verification |
 | Identity transition | installer-created account/logon right and installed LocalSystem E2E (the protected batch token source/profile lease and token-validating launcher are implemented) | fixed nonzero UID/GID/supplementary groups, cleared capabilities, no-new-privileges before `execve` |
 | Filesystem | account/root ACL grants plus elevated installed-host verification (protected broker-state descriptors/store and near-launch authorization checks are implemented) | native symlink/final-path checks reinforced by ownership/ACL denial |
 | Process lifecycle | installed-token E2E remains (Job Object ownership/termination is implemented and native-tested) | process group/session with TERM grace then KILL |
@@ -183,4 +183,4 @@ Hosted Windows/Linux unit tests demonstrate parser, configuration, environment, 
 
 The implemented shared layer narrows what a future broker may accept and makes unsafe authority fields structurally unavailable. It is defense against confused-deputy behavior, not a substitute for OS isolation.
 
-Until native peer authentication, protected configuration storage, identity transition, path resolution, process control, negative credential/filesystem tests, and service lifecycle are implemented and inspected, AWG must not be described as installable, runtime-verified, or safe for workstation execution.
+Until the remaining native boundaries, installed negative credential/filesystem tests, service lifecycle, and full isolated-host integration are implemented and inspected, AWG must not be described as installable, runtime-verified, or safe for workstation execution.

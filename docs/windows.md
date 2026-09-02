@@ -1,6 +1,6 @@
 # Windows Implementation and Installation State
 
-Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, and workload-ACL mechanisms exist, but mutating installation, service/IPC installation, and installed-host E2E are not complete.
+Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, workload-ACL, and authenticated named-pipe mechanisms exist, but mutating installation, service installation, broker integration, and installed-host E2E are not complete.
 
 ## Installation input versus installed configuration
 
@@ -74,8 +74,16 @@ The materializer accepts a caller-owned bounded UTF-8 password, copies it, clear
 
 No plaintext password is written to the plan, configuration, filesystem, environment, command line, output, error, or test fixture. See [ADR 0007](adr/0007-windows-protected-batch-token-source.md) for the DPAPI/ACL/token decision.
 
+## Authenticated broker pipe
+
+The Windows transport uses the fixed local name `\\.\pipe\agent-workstation-gateway-v1`; requests cannot select an endpoint, descriptor, SID, mode, or buffer size. It creates one overlapped message-mode instance with first-instance anti-squatting and remote-client rejection flags, then queries the created handle to require an exact protected DACL.
+
+LocalSystem and Administrators receive Full Access. The installed control SID receives the individual duplex pipe rights required by Windows, but not `FILE_APPEND_DATA`/`FILE_CREATE_PIPE_INSTANCE`, DACL/owner management, or system-security access. No execution, Everyone, or anonymous ACE is present.
+
+The client sends a fixed four-byte preface so the server can read a message before calling `ImpersonateNamedPipeClient`. The server pins the OS thread, compares the impersonated thread token's exact TokenUser SID with installed control identity, and always reverts before exposing the connection to the bounded record decoder. An administrator SID does not bypass that comparison. Reversion failure terminates the process. Application records use a four-byte big-endian length with a 256 KiB ceiling. See [ADR 0010](adr/0010-windows-authenticated-named-pipe.md).
+
 ## Evidence limits
 
-Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, protected-state descriptor policy, ordinary-parent denial before artifact creation, DPAPI mechanism behavior, compatibility with the token source's ACL validator, and real temporary-directory workload-ACL convergence/rollback.
+Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, protected-state descriptor policy, ordinary-parent denial before artifact creation, DPAPI mechanism behavior, compatibility with the token source's ACL validator, real temporary-directory workload-ACL convergence/rollback, and real local named-pipe descriptor/authentication/framing behavior.
 
-They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or effective installed execution-account access/denial. The workload-ACL tests use a nonexistent synthetic SID under fresh temporary directories and restore/remove their own state. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA and installed-token evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.
+They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or effective installed execution-account access/denial. The pipe test treats the current process as the synthetic control SID; it does not prove installed control success, installed execution/unrelated-user denial, non-control administrator rejection, or remote-host rejection. The workload-ACL tests use a nonexistent synthetic SID under fresh temporary directories and restore/remove their own state. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA and installed-token evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.
