@@ -113,7 +113,7 @@ func TestApprovedRootConvergenceAndRollbackUseOwnedHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := descriptorForPath(t, approved).String()
+	before := descriptorForPath(t, approved)
 	mutation, err := native.ConvergeApprovedRoot(approved, syntheticExecutionSID)
 	if err != nil {
 		t.Fatal(err)
@@ -130,8 +130,8 @@ func TestApprovedRootConvergenceAndRollbackUseOwnedHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 	mutation.Discard()
-	after := descriptorForPath(t, approved).String()
-	if after != before {
+	after := descriptorForPath(t, approved)
+	if !descriptorsEquivalent(after, before) {
 		t.Fatal("approved-root rollback did not restore the original descriptor")
 	}
 }
