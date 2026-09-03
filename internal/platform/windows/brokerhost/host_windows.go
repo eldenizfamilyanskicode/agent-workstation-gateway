@@ -54,6 +54,9 @@ type Runtime struct {
 	listener listener
 	handler  sessionHandler
 
+	mu        sync.Mutex
+	active    connection
+	closed    bool
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -174,11 +177,30 @@ func (host *Runtime) HandleOne(ctx context.Context) (resultErr error) {
 	if host == nil || host.listener == nil || host.handler == nil || ctx == nil {
 		return hostError("runtime-invalid")
 	}
+	host.mu.Lock()
+	closed := host.closed
+	host.mu.Unlock()
+	if closed {
+		return hostError("runtime-closed")
+	}
 	client, err := host.listener.Accept(ctx)
 	if err != nil || client == nil {
 		return hostCause("connection-accept-failed", err)
 	}
+	host.mu.Lock()
+	if host.closed {
+		host.mu.Unlock()
+		_ = client.Close()
+		return hostError("runtime-closed")
+	}
+	host.active = client
+	host.mu.Unlock()
 	defer func() {
+		host.mu.Lock()
+		if host.active == client {
+			host.active = nil
+		}
+		host.mu.Unlock()
 		if err := client.Close(); err != nil {
 			resultErr = errors.Join(resultErr, hostCause("connection-close-failed", err))
 		}
@@ -189,17 +211,65 @@ func (host *Runtime) HandleOne(ctx context.Context) (resultErr error) {
 	return nil
 }
 
-// Close stops future accepts. It is idempotent.
+// Close stops future accepts and interrupts the active owned connection. It is
+// idempotent and lets a service stop unblock both accept and session I/O.
 func (host *Runtime) Close() error {
 	if host == nil || host.listener == nil {
 		return nil
 	}
 	host.closeOnce.Do(func() {
+		host.mu.Lock()
+		host.closed = true
+		active := host.active
+		host.mu.Unlock()
 		if err := host.listener.Close(); err != nil {
 			host.closeErr = hostCause("listener-close-failed", err)
 		}
+		if active != nil {
+			if err := active.Close(); err != nil {
+				host.closeErr = errors.Join(host.closeErr, hostCause("active-connection-close-failed", err))
+			}
+		}
 	})
 	return host.closeErr
+}
+
+// IsRecoverableConnectionError reports whether a completed HandleOne failure
+// is confined to one closed peer/session and the listener may safely accept the
+// next client. Listener infrastructure and connection-close failures are never
+// recoverable.
+func IsRecoverableConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !IsRecoverableConnectionError(child) {
+				return false
+			}
+		}
+		return true
+	}
+	failure, ok := err.(*Error)
+	if !ok {
+		return false
+	}
+	switch failure.Rule {
+	case "connection-session-failed":
+		return true
+	case "connection-accept-failed":
+		ipcFailure, ok := failure.Cause.(*brokeripc.Error)
+		if !ok {
+			return false
+		}
+		return ipcFailure.Rule == "authentication-preface-invalid" || ipcFailure.Rule == "peer-sid-mismatch"
+	default:
+		return false
+	}
 }
 
 type nativeListener struct {

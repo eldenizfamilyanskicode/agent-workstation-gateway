@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -17,6 +19,7 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/brokersession"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/brokeripc"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/process"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 	v1 "github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/v1"
@@ -44,13 +47,20 @@ func (listener *fakeListener) Close() error {
 
 type fakeConnection struct {
 	closeErr error
-	closes   int
+	closes   atomic.Int32
+	closed   chan struct{}
+	once     sync.Once
 }
 
 func (*fakeConnection) ReadContext(context.Context, []byte) (int, error)  { return 0, nil }
 func (*fakeConnection) WriteContext(context.Context, []byte) (int, error) { return 0, nil }
 func (connection *fakeConnection) Close() error {
-	connection.closes++
+	connection.closes.Add(1)
+	connection.once.Do(func() {
+		if connection.closed != nil {
+			close(connection.closed)
+		}
+	})
 	return connection.closeErr
 }
 
@@ -279,7 +289,7 @@ func TestHandleOneAlwaysClosesAcceptedConnection(t *testing.T) {
 	if err := host.HandleOne(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if listener.accepts != 1 || handler.handles != 1 || connection.closes != 1 {
+	if listener.accepts != 1 || handler.handles != 1 || connection.closes.Load() != 1 {
 		t.Fatal("successful connection did not complete the owned lifecycle")
 	}
 
@@ -291,7 +301,7 @@ func TestHandleOneAlwaysClosesAcceptedConnection(t *testing.T) {
 		handler:  &fakeHandler{err: handleFailure},
 	}
 	err := host.HandleOne(context.Background())
-	if !errors.Is(err, handleFailure) || !errors.Is(err, closeFailure) || connection.closes != 1 {
+	if !errors.Is(err, handleFailure) || !errors.Is(err, closeFailure) || connection.closes.Load() != 1 {
 		t.Fatal("session and close failures were not both preserved")
 	}
 }
@@ -307,6 +317,71 @@ func TestRuntimeCloseIsIdempotent(t *testing.T) {
 	}
 	if listener.closes != 1 {
 		t.Fatalf("listener closed %d times", listener.closes)
+	}
+}
+
+func TestRuntimeCloseInterruptsActiveConnection(t *testing.T) {
+	connection := &fakeConnection{closed: make(chan struct{})}
+	listenerValue := &fakeListener{connection: connection}
+	handlerStarted := make(chan struct{})
+	handler := &blockingHandler{started: handlerStarted, released: connection.closed}
+	host := &Runtime{listener: listenerValue, handler: handler}
+	done := make(chan error, 1)
+	go func() {
+		done <- host.HandleOne(context.Background())
+	}()
+	<-handlerStarted
+	if err := host.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if listenerValue.closes != 1 || connection.closes.Load() < 1 {
+		t.Fatal("runtime close did not close listener and active connection")
+	}
+	assertHostRule(t, host.HandleOne(context.Background()), "runtime-closed")
+}
+
+type blockingHandler struct {
+	started  chan struct{}
+	released chan struct{}
+}
+
+func (handler *blockingHandler) Handle(context.Context, brokersession.ContextTransport) error {
+	close(handler.started)
+	<-handler.released
+	return nil
+}
+
+func TestRecoverableConnectionErrorPolicyIsClosed(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		recoverable bool
+	}{
+		{name: "session", err: hostCause("connection-session-failed", errors.New("synthetic session failure")), recoverable: true},
+		{name: "bad preface", err: hostCause("connection-accept-failed", &brokeripc.Error{Rule: "authentication-preface-invalid"}), recoverable: true},
+		{name: "wrong peer", err: hostCause("connection-accept-failed", &brokeripc.Error{Rule: "peer-sid-mismatch"}), recoverable: true},
+		{name: "accept infrastructure", err: hostCause("connection-accept-failed", &brokeripc.Error{Rule: "pipe-create-failed"})},
+		{name: "close", err: hostCause("connection-close-failed", errors.New("synthetic close failure"))},
+		{name: "unknown", err: errors.New("synthetic unknown failure")},
+		{name: "nil"},
+		{name: "recoverable join", err: errors.Join(
+			hostCause("connection-session-failed", errors.New("synthetic session failure")),
+			hostCause("connection-session-failed", errors.New("synthetic response failure")),
+		), recoverable: true},
+		{name: "mixed join", err: errors.Join(
+			hostCause("connection-session-failed", errors.New("synthetic session failure")),
+			hostCause("connection-close-failed", errors.New("synthetic close failure")),
+		)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if actual := IsRecoverableConnectionError(test.err); actual != test.recoverable {
+				t.Fatalf("recoverable=%t, want %t", actual, test.recoverable)
+			}
+		})
 	}
 }
 
