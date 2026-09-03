@@ -9,6 +9,9 @@ var gatewaySourceSHA string
 type serviceStarter func(string, string) error
 
 func main() {
+	if handled, code := runPlatformHelper(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	os.Exit(run(os.Args[1:], gatewaySourceSHA, startPlatformService))
 }
 
