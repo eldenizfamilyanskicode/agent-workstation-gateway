@@ -11,6 +11,7 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/executionrun"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/ipcframe"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/workloadenv"
 	v1 "github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/v1"
 )
@@ -29,7 +30,7 @@ func New(
 	if resolver == nil || runner == nil {
 		return nil, sessionError("execution-dependency-required")
 	}
-	if !lowerHexSourceSHA(gatewaySourceSHA) {
+	if !sourceversion.IsCanonicalGitSHA(gatewaySourceSHA) {
 		return nil, sessionError("gateway-source-sha-invalid")
 	}
 	if _, err := workloadenv.Build(configuration, safeBaseEnvironment, workloadenv.Context{
@@ -178,18 +179,6 @@ func boundedDuration(value time.Duration, fallback time.Duration, maximum time.D
 		return 0, sessionError("duration-outside-limit")
 	}
 	return value, nil
-}
-
-func lowerHexSourceSHA(value string) bool {
-	if len(value) != 40 {
-		return false
-	}
-	for _, character := range value {
-		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
-			return false
-		}
-	}
-	return true
 }
 
 func cloneConfiguration(configuration installconfig.Config) installconfig.Config {

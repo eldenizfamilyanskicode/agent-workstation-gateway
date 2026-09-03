@@ -13,6 +13,7 @@ import (
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/brokerhost"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 )
 
 const (
@@ -85,7 +86,7 @@ func validateStartupInputs(installationRoot string, gatewaySourceSHA string) err
 	if _, err := installplan.WindowsLayout(installationRoot); err != nil {
 		return serviceCause("installation-root-invalid", err)
 	}
-	if !lowerHexSourceSHA(gatewaySourceSHA) {
+	if !sourceversion.IsCanonicalGitSHA(gatewaySourceSHA) {
 		return serviceError("gateway-source-sha-invalid")
 	}
 	return nil
@@ -198,18 +199,6 @@ func stopService(
 		return true, exitShutdownFailure
 	}
 	return false, 0
-}
-
-func lowerHexSourceSHA(value string) bool {
-	if len(value) != 40 {
-		return false
-	}
-	for _, character := range value {
-		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
-			return false
-		}
-	}
-	return true
 }
 
 func serviceError(rule string) error { return &Error{Rule: rule} }
