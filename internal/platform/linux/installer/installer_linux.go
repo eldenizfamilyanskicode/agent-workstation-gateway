@@ -97,7 +97,12 @@ func Provision(ctx context.Context, input Input) (resultErr error) {
 		rollbackFailed := rollback(context.Background(), input, layout, registered, createdUnits, aclApplied, createdRunner, createdRoot,
 			createdProfile, createdTemp, createdControlUser, createdExecutionUser, createdControlGroup, createdExecutionGroup)
 		if rollbackFailed {
-			resultErr = installerError("rollback-failed")
+			rule := "unknown-stage"
+			var failure *Error
+			if errors.As(resultErr, &failure) {
+				rule = failure.Rule
+			}
+			resultErr = installerError("rollback-failed-after-" + rule)
 		}
 	}()
 
@@ -182,6 +187,9 @@ func Provision(ctx context.Context, input Input) (resultErr error) {
 	store := &runnerStore{root: layout.RunnerRoot, uid: controlUID, gid: controlGID}
 	if err := input.RunnerImage.Extract(ctx, store); err != nil {
 		return installerError("runner-extract-failed")
+	}
+	if validateRunnerRuntime(ctx, layout, controlUID, controlGID) != nil {
+		return installerError("runner-runtime-unavailable")
 	}
 	for _, directory := range []string{layout.RunnerWorkDirectory, layout.RunnerResponseDirectory, filepath.Dir(layout.RunnerControlExecutable)} {
 		if err := createDirectory(directory, 0o700, controlUID, controlGID); err != nil {
@@ -406,7 +414,7 @@ func ExpectedBrokerUnit(layout installplan.Layout, specification installplan.Spe
 	readWrite := append([]string{"/run/agent-workstation-gateway", specification.ProfileRoot, specification.TempRoot}, specification.ApprovedRoots...)
 	return "[Unit]\nDescription=Agent Workstation Gateway broker\nAfter=network.target\n\n[Service]\nType=simple\n" +
 		"ExecStart=" + layout.BrokerExecutable + " --installation-root " + layout.Root + "\nUser=root\nGroup=root\n" +
-		"NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectKernelTunables=true\nProtectKernelModules=true\n" +
+		"NoNewPrivileges=true\nPrivateTmp=false\nProtectSystem=strict\nProtectKernelTunables=true\nProtectKernelModules=true\n" +
 		"ProtectControlGroups=true\nRestrictSUIDSGID=true\nRuntimeDirectory=agent-workstation-gateway\nRuntimeDirectoryMode=0750\nCapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN\n" +
 		"ReadWritePaths=" + strings.Join(readWrite, " ") + "\nRestart=on-failure\nRestartSec=2s\nTimeoutStopSec=30s\n\n[Install]\nWantedBy=multi-user.target\n"
 }
@@ -415,7 +423,7 @@ func ExpectedRunnerUnit(layout installplan.Layout, account string) string {
 	return "[Unit]\nDescription=Agent Workstation Gateway control runner\nAfter=network-online.target " + BrokerUnitName + "\nWants=network-online.target\nRequires=" + BrokerUnitName + "\n\n[Service]\nType=simple\n" +
 		"User=" + account + "\nGroup=" + account + "\nWorkingDirectory=" + layout.RunnerRoot + "\n" +
 		"Environment=HOME=" + layout.RunnerRoot + "\nEnvironment=DOTNET_EnableDiagnostics=0\nExecStart=" + filepath.Join(layout.RunnerRoot, "run.sh") + "\n" +
-		"NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nReadWritePaths=" + layout.RunnerRoot + "\nRestrictSUIDSGID=true\nRestart=on-failure\nRestartSec=5s\nTimeoutStopSec=30s\n\n[Install]\nWantedBy=multi-user.target\n"
+		"NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nReadWritePaths=" + layout.RunnerRoot + "\nRestrictSUIDSGID=false\nRestart=on-failure\nRestartSec=5s\nTimeoutStopSec=30s\n\n[Install]\nWantedBy=multi-user.target\n"
 }
 
 func rollback(ctx context.Context, input Input, layout installplan.Layout, registered, units, acl, runner, root, profile, temp, controlUser, executionUser, controlGroup, executionGroup bool) bool {
@@ -451,10 +459,10 @@ func rollback(ctx context.Context, input Input, layout installplan.Layout, regis
 		failed = run(ctx, "userdel", input.Specification.ControlAccount) != nil || failed
 	}
 	if executionGroup {
-		failed = run(ctx, "groupdel", input.Specification.ExecutionAccount) != nil || failed
+		failed = deleteGroup(ctx, input.Specification.ExecutionAccount) != nil || failed
 	}
 	if controlGroup {
-		failed = run(ctx, "groupdel", input.Specification.ControlAccount) != nil || failed
+		failed = deleteGroup(ctx, input.Specification.ControlAccount) != nil || failed
 	}
 	return failed
 }
@@ -470,6 +478,24 @@ func removeLocalRunner(ctx context.Context, layout installplan.Layout, account s
 	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: []uint32{}}, Setpgid: true, Pdeathsig: syscall.SIGKILL}
 	command.Stdout, command.Stderr = io.Discard, io.Discard
 	return command.Run()
+}
+
+func validateRunnerRuntime(ctx context.Context, layout installplan.Layout, uid, gid int) error {
+	command := exec.CommandContext(ctx, filepath.Join(layout.RunnerRoot, "bin", "Runner.Listener"), "--version")
+	command.Dir = layout.RunnerRoot
+	command.Env = []string{"HOME=" + layout.RunnerRoot, "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8"}
+	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: []uint32{}}, Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	command.Stdout, command.Stderr = io.Discard, io.Discard
+	return command.Run()
+}
+
+func deleteGroup(ctx context.Context, name string) error {
+	if err := run(ctx, "groupdel", name); err != nil {
+		if _, lookupErr := user.LookupGroup(name); lookupErr == nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func createDirectory(path string, mode fs.FileMode, uid, gid int) error {

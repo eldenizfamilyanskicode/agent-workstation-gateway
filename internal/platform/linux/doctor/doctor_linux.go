@@ -202,8 +202,8 @@ func verifyEffectiveService(ctx context.Context, controlAccount string) error {
 	for _, item := range []struct {
 		unit, expected string
 	}{
-		{installer.BrokerUnitName, "User=root\nGroup=root\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nRestrictSUIDSGID=yes"},
-		{installer.RunnerUnitName, "User=" + controlAccount + "\nGroup=" + controlAccount + "\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nRestrictSUIDSGID=yes"},
+		{installer.BrokerUnitName, "User=root\nGroup=root\nNoNewPrivileges=yes\nPrivateTmp=no\nProtectSystem=strict\nRestrictSUIDSGID=yes"},
+		{installer.RunnerUnitName, "User=" + controlAccount + "\nGroup=" + controlAccount + "\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nRestrictSUIDSGID=no"},
 	} {
 		command := exec.CommandContext(ctx, "systemctl", "show", item.unit, "--property=User,Group,NoNewPrivileges,PrivateTmp,ProtectSystem,RestrictSUIDSGID")
 		output, err := command.Output()

@@ -21,7 +21,7 @@ AWG v0.1 uses two fixed systemd services and two dedicated system users:
 - timeout, explicit stop, and broker shutdown signal the complete process group with TERM followed by KILL and reap descendants;
 - artifact enumeration and file opening happen in a separate helper under the execution identity, never through root read authority.
 
-The installer creates both users and groups, stores the runner outside the protected broker root, grants the execution user ACL access only to explicit approved roots, and records the original ACLs for uninstall. The broker systemd unit has a strict filesystem view and a capability bounding set limited to identity transition, ownership adjustment, and process termination. The runner unit cannot read the protected installation state.
+The installer creates both users and groups, stores the runner outside the protected broker root, grants the execution user ACL access only to explicit approved roots, and records the original ACLs for uninstall. The broker systemd unit has a strict filesystem view, retains `RestrictSUIDSGID`, and has a capability bounding set limited to identity transition, ownership adjustment, and process termination. The runner unit cannot read the protected installation state. It retains `NoNewPrivileges` and a strict filesystem view but disables `RestrictSUIDSGID`: current WSL kernels return `ENOSYS` for GNU tar's safe `openat2` calls under that systemd filter, preventing the pinned runner from materializing immutable GitHub actions. The runner root remains writable only by the non-root control identity.
 
 Linux control responses are written create-new into a control-owned staging directory and atomically renamed. Any symlink in the destination chain is rejected.
 

@@ -18,14 +18,12 @@ func TestServerRejectsWrongPeerUID(t *testing.T) {
 		t.Skip("requires root to set the socket policy")
 	}
 	_ = os.Remove(SocketPath)
-	_ = os.Remove(SocketDirectory)
 	server, err := NewServer(testConfiguration())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		_ = server.Close()
-		_ = os.Remove(SocketDirectory)
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

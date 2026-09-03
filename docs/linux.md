@@ -7,6 +7,7 @@ AWG v0.1 targets x86-64 Linux hosts using systemd. WSL2 is supported when the di
 - a root-capable administrative shell;
 - systemd and procfs;
 - `getfacl` and `setfacl` (usually the `acl` package);
+- the official GitHub Actions runner OS dependencies for the distribution (the pinned runner archive provides `bin/installdependencies.sh` for administrators to inspect and run before installation);
 - GitHub CLI authenticated as the owner of a dedicated private control repository;
 - the pinned AWG release binaries and official GitHub Actions runner archive.
 

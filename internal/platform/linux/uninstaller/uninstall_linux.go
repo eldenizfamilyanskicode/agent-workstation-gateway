@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/linux/doctor"
@@ -77,8 +78,17 @@ func Run(ctx context.Context, installationRoot, sourceSHA string, remote Remote)
 		}
 	}
 	for _, name := range []string{configuration.ExecutionIdentity.Name, configuration.ControlIdentity.Name} {
-		if run(ctx, "userdel", name) != nil || run(ctx, "groupdel", name) != nil {
+		if run(ctx, "userdel", name) != nil || deleteGroup(ctx, name) != nil {
 			return uninstallError("identity-remove-failed")
+		}
+	}
+	return nil
+}
+
+func deleteGroup(ctx context.Context, name string) error {
+	if err := run(ctx, "groupdel", name); err != nil {
+		if _, lookupErr := user.LookupGroup(name); lookupErr == nil {
+			return err
 		}
 	}
 	return nil
