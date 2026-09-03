@@ -56,6 +56,8 @@ func TestWindowsLayoutDerivesOnlyFixedProtectedPaths(t *testing.T) {
 	expected := Layout{
 		Root:                    `C:\ProgramData\AgentWorkstationGateway`,
 		BinDirectory:            `C:\ProgramData\AgentWorkstationGateway\bin`,
+		BrokerExecutable:        `C:\ProgramData\AgentWorkstationGateway\bin\awg-broker.exe`,
+		ControlExecutable:       `C:\ProgramData\AgentWorkstationGateway\bin\awg.exe`,
 		StateDirectory:          `C:\ProgramData\AgentWorkstationGateway\state`,
 		InstallationConfig:      `C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
 		ExecutionCredential:     `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,

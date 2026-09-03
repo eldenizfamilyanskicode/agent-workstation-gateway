@@ -119,6 +119,8 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 	return Layout{
 		Root:                    installationRoot,
 		BinDirectory:            joinWindows(installationRoot, "bin"),
+		BrokerExecutable:        joinWindows(installationRoot, "bin", "awg-broker.exe"),
+		ControlExecutable:       joinWindows(installationRoot, "bin", "awg.exe"),
 		StateDirectory:          joinWindows(installationRoot, "state"),
 		InstallationConfig:      joinWindows(installationRoot, "state", "installation.json"),
 		ExecutionCredential:     joinWindows(installationRoot, "state", "execution-credential.dpapi"),

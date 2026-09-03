@@ -41,6 +41,7 @@ type rootTransaction interface {
 	sharedstate.Store
 	InstallationLayout() (installplan.Layout, error)
 	WriteBrokerImage(context.Context, []byte) error
+	WriteControlImage(context.Context, []byte) error
 	Commit() error
 	Close() error
 }
@@ -162,6 +163,10 @@ func provision(
 		return nil, installerError("broker-image-materialization-failed")
 	}
 	prepared.brokerImage = nil
+	if err := rootLease.WriteControlImage(ctx, prepared.controlImage); err != nil {
+		return nil, installerError("control-image-materialization-failed")
+	}
+	prepared.controlImage = nil
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}

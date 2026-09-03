@@ -21,7 +21,8 @@ const testSourceSHA = "0123456789abcdef0123456789abcdef01234567"
 func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
 	input := Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
-		RunnerImage: syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+		ControlImage: syntheticBrokerImage(testSourceSHA),
+		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
 	}
 	prepared, err := prepareInputWithPolicy(input, false)
 	if err != nil {
@@ -29,7 +30,8 @@ func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
 	}
 	input.Specification.ApprovedRoots[0] = "C:\\Mutated"
 	input.BrokerImage[0] = 0
-	if prepared.specification.ApprovedRoots[0] != "C:\\Users\\Alice\\Projects" || prepared.brokerImage[0] != 'M' {
+	input.ControlImage[0] = 0
+	if prepared.specification.ApprovedRoots[0] != "C:\\Users\\Alice\\Projects" || prepared.brokerImage[0] != 'M' || prepared.controlImage[0] != 'M' {
 		t.Fatal("validated installer input was not pinned against caller mutation")
 	}
 }
@@ -37,7 +39,8 @@ func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
 func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 	valid := Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
-		RunnerImage: syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+		ControlImage: syntheticBrokerImage(testSourceSHA),
+		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
 	}
 	tests := []struct {
 		name   string
@@ -52,6 +55,7 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 			binary.LittleEndian.PutUint16(input.BrokerImage[0x96:0x98], peExecutableImageFlag|peDLLFlag)
 		}},
 		{name: "missing embedded sha", rule: "broker-image-invalid", mutate: func(input *Input) { copy(input.BrokerImage[0xc0:], []byte("ffffffffffffffffffffffffffffffffffffffff")) }},
+		{name: "control image", rule: "control-image-invalid", mutate: func(input *Input) { input.ControlImage = nil }},
 		{name: "runner image", rule: "runner-image-invalid", mutate: func(input *Input) { input.RunnerImage = nil }},
 		{name: "runner registration", rule: "runner-registration-invalid", mutate: func(input *Input) { input.RunnerRegistration.RemovalToken = nil }},
 	}
@@ -59,7 +63,7 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			input := Input{
 				Specification: cloneSpecification(valid.Specification), GatewaySourceSHA: valid.GatewaySourceSHA,
-				BrokerImage: append([]byte(nil), valid.BrokerImage...), RunnerImage: valid.RunnerImage,
+				BrokerImage: append([]byte(nil), valid.BrokerImage...), ControlImage: append([]byte(nil), valid.ControlImage...), RunnerImage: valid.RunnerImage,
 				RunnerRegistration: cloneRegistration(valid.RunnerRegistration),
 			}
 			test.mutate(&input)
@@ -84,6 +88,24 @@ func TestBrokerImagePolicyAcceptsTheActualServiceBuild(t *testing.T) {
 	}
 	if !validBrokerImage(image, testSourceSHA) {
 		t.Fatal("actual service-only broker build did not satisfy installer image policy")
+	}
+}
+
+func TestControlImagePolicyAcceptsTheActualWindowsCLI(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "awg.exe")
+	command := exec.Command(
+		"go", "build", "-trimpath", "-ldflags=-X=main.gatewaySourceSHA="+testSourceSHA,
+		"-o", target, "../../../../cmd/awg",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("could not build actual control fixture: %v / %s", err, output)
+	}
+	image, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validBrokerImage(image, testSourceSHA) {
+		t.Fatal("actual Windows control build did not satisfy installer image policy")
 	}
 }
 

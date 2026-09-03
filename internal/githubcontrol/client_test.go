@@ -122,6 +122,94 @@ func TestClientRejectsUnsafeInputsAndClearsToken(t *testing.T) {
 	}
 }
 
+func TestExclusiveRepositoryControlFileAndRunnerTokens(t *testing.T) {
+	createdFile := false
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/alice/example-control":
+			_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private","owner":{"login":"alice"}}`))
+		case "/user":
+			_, _ = writer.Write([]byte(`{"login":"alice"}`))
+		case "/repos/alice/example-control/collaborators":
+			_, _ = writer.Write([]byte(`[{"login":"alice"}]`))
+		case "/repos/alice/example-control/contents/control-version.json":
+			if request.Method == http.MethodGet {
+				writer.WriteHeader(http.StatusNotFound)
+				return
+			}
+			createdFile = request.Method == http.MethodPut
+			writer.WriteHeader(http.StatusCreated)
+		case "/repos/alice/example-control/actions/runners/registration-token":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"token":"synthetic-registration-token"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.String())
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	created, err := client.EnsureControlFile(context.Background(), "control-version.json", []byte(`{"schema_version":1}`))
+	if err != nil || !created || !createdFile {
+		t.Fatalf("control file was not created: created=%v requested=%v err=%v", created, createdFile, err)
+	}
+	token, err := client.RegistrationToken(context.Background())
+	if err != nil || string(token) != "synthetic-registration-token" {
+		t.Fatalf("registration token unavailable: %v", err)
+	}
+}
+
+func TestExclusiveRepositoryRejectsUnexpectedReader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/alice/example-control":
+			_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private","owner":{"login":"alice"}}`))
+		case "/user":
+			_, _ = writer.Write([]byte(`{"login":"alice"}`))
+		case "/repos/alice/example-control/collaborators":
+			_, _ = writer.Write([]byte(`[{"login":"alice"},{"login":"mallory"}]`))
+		}
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.VerifyExclusivePrivate(context.Background()); err == nil || !strings.Contains(err.Error(), "unexpected-repository-reader") {
+		t.Fatalf("unexpected reader was accepted: %v", err)
+	}
+}
+
+func TestCreatePersonalPrivateRepository(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/user" {
+			_, _ = writer.Write([]byte(`{"login":"alice"}`))
+			return
+		}
+		if request.URL.Path != "/user/repos" || request.Method != http.MethodPost {
+			t.Errorf("unexpected create request: %s %s", request.Method, request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private"}`))
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.CreatePersonalPrivate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func githubAccepted(t *testing.T) v1.AcceptedRequestRecord {
 	t.Helper()
 	request := v1.Request{

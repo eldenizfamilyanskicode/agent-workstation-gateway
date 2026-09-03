@@ -28,6 +28,7 @@ type Input struct {
 	Specification      installplan.Spec
 	GatewaySourceSHA   string
 	BrokerImage        []byte
+	ControlImage       []byte
 	RunnerImage        *runnerpackage.Image
 	RunnerRegistration runnerregistration.Request
 }
@@ -36,12 +37,26 @@ type preparedInput struct {
 	specification      installplan.Spec
 	gatewaySourceSHA   string
 	brokerImage        []byte
+	controlImage       []byte
 	runnerImage        *runnerpackage.Image
 	runnerRegistration runnerregistration.Request
 }
 
 type Error struct {
 	Rule string
+}
+
+func ValidateReleaseImages(gatewaySourceSHA string, brokerImage []byte, controlImage []byte) error {
+	if !sourceversion.IsCanonicalGitSHA(gatewaySourceSHA) {
+		return installerError("gateway-source-sha-invalid")
+	}
+	if !validBrokerImage(brokerImage, gatewaySourceSHA) {
+		return installerError("broker-image-invalid")
+	}
+	if !validBrokerImage(controlImage, gatewaySourceSHA) {
+		return installerError("control-image-invalid")
+	}
+	return nil
 }
 
 func (failure *Error) Error() string {
@@ -56,11 +71,8 @@ func prepareInputWithPolicy(input Input, requirePinnedRunner bool) (preparedInpu
 	if _, err := installplan.Build(input.Specification); err != nil {
 		return preparedInput{}, installerError("install-specification-invalid")
 	}
-	if !sourceversion.IsCanonicalGitSHA(input.GatewaySourceSHA) {
-		return preparedInput{}, installerError("gateway-source-sha-invalid")
-	}
-	if !validBrokerImage(input.BrokerImage, input.GatewaySourceSHA) {
-		return preparedInput{}, installerError("broker-image-invalid")
+	if err := ValidateReleaseImages(input.GatewaySourceSHA, input.BrokerImage, input.ControlImage); err != nil {
+		return preparedInput{}, err
 	}
 	if input.RunnerImage == nil || input.RunnerImage.Version() == "" ||
 		(requirePinnedRunner && !input.RunnerImage.PinnedWindowsX64()) {
@@ -76,6 +88,7 @@ func prepareInputWithPolicy(input Input, requirePinnedRunner bool) (preparedInpu
 		specification:    cloneSpecification(input.Specification),
 		gatewaySourceSHA: input.GatewaySourceSHA,
 		brokerImage:      append([]byte(nil), input.BrokerImage...),
+		controlImage:     append([]byte(nil), input.ControlImage...),
 		runnerImage:      input.RunnerImage, runnerRegistration: registration,
 	}, nil
 }

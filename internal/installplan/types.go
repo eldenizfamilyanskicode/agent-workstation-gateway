@@ -26,6 +26,8 @@ type Spec struct {
 type Layout struct {
 	Root                    string `json:"root"`
 	BinDirectory            string `json:"bin_directory"`
+	BrokerExecutable        string `json:"broker_executable"`
+	ControlExecutable       string `json:"control_executable"`
 	StateDirectory          string `json:"state_directory"`
 	InstallationConfig      string `json:"installation_config"`
 	ExecutionCredential     string `json:"execution_credential"`

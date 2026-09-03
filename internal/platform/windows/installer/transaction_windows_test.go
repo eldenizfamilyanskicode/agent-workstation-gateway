@@ -243,6 +243,11 @@ func (transaction *fakeRootTransaction) WriteBrokerImage(context.Context, []byte
 	return transaction.harness.failures["broker-image-write"]
 }
 
+func (transaction *fakeRootTransaction) WriteControlImage(context.Context, []byte) error {
+	transaction.harness.operations = append(transaction.harness.operations, "control-image-write")
+	return transaction.harness.failures["control-image-write"]
+}
+
 func (transaction *fakeRootTransaction) Commit() error {
 	transaction.harness.operations = append(transaction.harness.operations, "root-commit")
 	return transaction.harness.failures["root-commit"]
@@ -297,6 +302,7 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 		"filesystem-provision",
 		"root-provision",
 		"broker-image-write",
+		"control-image-write",
 		"state-materialize",
 		"directory-verify:" + layout.Root,
 		"directory-verify:" + layout.BinDirectory,
@@ -353,6 +359,7 @@ func TestProvisionRollsBackEveryOwnedStageFailure(t *testing.T) {
 		{stage: "filesystem-provision", rule: "filesystem-provision-failed", closed: []string{"accounts-close"}},
 		{stage: "root-provision", rule: "installation-root-provision-failed", closed: []string{"filesystem-close", "accounts-close"}},
 		{stage: "broker-image-write", rule: "broker-image-materialization-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
+		{stage: "control-image-write", rule: "control-image-materialization-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "state-materialize", rule: "installation-state-materialization-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "execution-password-clear", rule: "execution-password-clear-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "service-provision", rule: "service-provision-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
@@ -505,7 +512,7 @@ func preparedInstallerInput(t *testing.T) preparedInput {
 	t.Helper()
 	prepared, err := prepareInputWithPolicy(Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA,
-		BrokerImage: syntheticBrokerImage(testSourceSHA), RunnerImage: syntheticRunnerImage(t),
+		BrokerImage: syntheticBrokerImage(testSourceSHA), ControlImage: syntheticBrokerImage(testSourceSHA), RunnerImage: syntheticRunnerImage(t),
 		RunnerRegistration: syntheticRunnerRegistration(t),
 	}, false)
 	if err != nil {

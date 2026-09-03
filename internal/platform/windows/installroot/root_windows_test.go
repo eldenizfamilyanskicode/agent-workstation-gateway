@@ -181,6 +181,9 @@ func TestLeaseRollsBackOwnedFilesInReverseOrder(t *testing.T) {
 	if err := lease.WriteBrokerImage(context.Background(), []byte("synthetic-broker-image")); err != nil {
 		t.Fatal(err)
 	}
+	if err := lease.WriteControlImage(context.Background(), []byte("synthetic-control-image")); err != nil {
+		t.Fatal(err)
+	}
 	if err := lease.WriteProtectedFile(layout.ExecutionCredential, []byte("synthetic-protected-credential")); err != nil {
 		t.Fatal(err)
 	}
@@ -189,12 +192,14 @@ func TestLeaseRollsBackOwnedFilesInReverseOrder(t *testing.T) {
 	}
 	assertRootRule(t, lease.WriteProtectedFile(layout.InstallationConfig, []byte("again")), "state-path-already-attempted")
 	assertRootRule(t, lease.WriteBrokerImage(context.Background(), []byte("again")), "broker-image-already-attempted")
+	assertRootRule(t, lease.WriteControlImage(context.Background(), []byte("again")), "control-image-already-attempted")
 	if err := lease.Close(); err != nil {
 		t.Fatal(err)
 	}
 	expectedTail := []string{
 		"remove-state:" + layout.InstallationConfig,
 		"remove-state:" + layout.ExecutionCredential,
+		"remove-executable:" + layout.ControlExecutable,
 		"remove-executable:" + layout.BinDirectory + "\\awg-broker.exe",
 		"rmdir:" + layout.StateDirectory,
 		"rmdir:" + layout.BinDirectory,

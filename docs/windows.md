@@ -90,6 +90,28 @@ The Windows broker host now loads only exact protected state paths derived from 
 
 `awg-broker.exe` is now a service-only binary with the fixed SCM name `AgentWorkstationGatewayBroker`. Its image command line accepts only the administrator-protected installation root. The exact public source commit is embedded by trusted release builds; an empty, uppercase, symbolic, or otherwise non-lowercase-40-hex source value fails startup. There is no interactive console fallback.
 
+## Fresh install command
+
+The mutating Windows installer is run from an elevated terminal with an authenticated GitHub CLI session. It accepts only pinned local release inputs, uses `gh auth token` through a bounded pipe rather than a command argument, and supports either creating a new initialized personal private repository or selecting an existing one:
+
+```powershell
+awg.exe install `
+  --spec .\windows-install.json `
+  --repository alice/example-control `
+  --create-repository `
+  --broker-image .\awg-broker-windows-amd64.exe `
+  --control-image .\awg-windows-amd64.exe `
+  --runner-archive .\actions-runner-win-x64-2.337.0.zip `
+  --hosted-control-url https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/download/v0.1.0/awg-control-linux-amd64 `
+  --hosted-control-sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+Release builds embed the exact 40-hex public source SHA in both Windows executables. The installer rejects a broker or control executable that is not an AMD64 PE image containing that SHA, and independently enforces the fixed v0.1 GitHub runner version, exact archive byte count, and SHA-256. The digest above is synthetic documentation data; use the digest from the signed v0.1 release manifest.
+
+The selected repository must be owned by the authenticated personal account, private, and have no other effective collaborator. v0.1 rejects organization repositories and shared personal repositories because their reader/requester boundary requires an explicit policy not yet represented by this command. There is no public-repository override.
+
+Bootstrap creates or confirms only `.github/workflows/execute-request.yml` and `control-version.json`. Existing differing content is a hard conflict. It then requests short-lived registration/removal tokens, commits the create-new local account/ACL/service/runner transaction, and starts the fixed broker and runner services. A failure never prints a token, issue body, private local path, or GitHub response body.
+
 Before protected-state loading, the service requires an actual SCM process context and exact LocalSystem TokenUser. It reports bounded StartPending/Running/StopPending states and accepts only Stop/Shutdown. Shutdown cancels execution, closes the listener and any active connection to interrupt IPC, and waits for the owned sequential loop. Only closed peer/session failures continue to another accept; listener infrastructure and handle-close failures terminate the service. See [ADR 0015](adr/0015-windows-scm-broker-service.md).
 
 The binary can be built for inspection with a synthetic source value:

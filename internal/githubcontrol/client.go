@@ -36,6 +36,28 @@ type repositoryResponse struct {
 	FullName   string `json:"full_name"`
 	Private    bool   `json:"private"`
 	Visibility string `json:"visibility"`
+	Owner      struct {
+		Login string `json:"login"`
+	} `json:"owner"`
+}
+
+type userResponse struct {
+	Login string `json:"login"`
+}
+
+type collaboratorResponse struct {
+	Login string `json:"login"`
+}
+
+type contentResponse struct {
+	Type     string `json:"type"`
+	Encoding string `json:"encoding"`
+	Content  string `json:"content"`
+	SHA      string `json:"sha"`
+}
+
+type runnerTokenResponse struct {
+	Token string `json:"token"`
 }
 
 type createFileRequest struct {
@@ -80,20 +102,88 @@ func (client *Client) Close() {
 }
 
 func (client *Client) VerifyPrivate(ctx context.Context) error {
-	if client == nil || ctx == nil || len(client.token) == 0 {
-		return githubError("client-closed")
+	repository, err := client.readRepository(ctx)
+	if err != nil {
+		return err
 	}
-	response, err := client.request(ctx, http.MethodGet, "/repos/"+client.repository.Name(), nil)
+	if repository.FullName != client.repository.Name() || !repository.Private || repository.Visibility != "private" {
+		return githubError("private-repository-required")
+	}
+	return nil
+}
+
+// VerifyExclusivePrivate is the deliberately small v0.1 requester boundary:
+// one personal private repository whose only effective collaborator is its
+// authenticated owner. Organization/inherited readership requires a later
+// explicit reader policy instead of being silently accepted.
+func (client *Client) VerifyExclusivePrivate(ctx context.Context) error {
+	repository, err := client.readRepository(ctx)
+	if err != nil {
+		return err
+	}
+	if repository.FullName != client.repository.Name() || !repository.Private || repository.Visibility != "private" {
+		return githubError("private-repository-required")
+	}
+	user, err := client.readUser(ctx)
+	if err != nil || repository.Owner.Login == "" || user.Login == "" ||
+		!strings.EqualFold(repository.Owner.Login, user.Login) {
+		return githubError("exclusive-personal-repository-required")
+	}
+	response, err := client.request(ctx, http.MethodGet, "/repos/"+client.repository.Name()+"/collaborators?affiliation=all&per_page=100", nil)
 	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return githubError("repository-read-failed")
+	if response.StatusCode != http.StatusOK || strings.Contains(response.Header.Get("Link"), `rel="next"`) {
+		return githubError("repository-readers-unavailable")
 	}
-	encoded, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if err != nil || len(encoded) > maxResponseBytes {
-		return githubError("repository-response-invalid")
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return githubError("repository-readers-invalid")
+	}
+	var collaborators []collaboratorResponse
+	if err := json.Unmarshal(encoded, &collaborators); err != nil {
+		return githubError("repository-readers-invalid")
+	}
+	for _, collaborator := range collaborators {
+		if collaborator.Login == "" || !strings.EqualFold(collaborator.Login, user.Login) {
+			return githubError("unexpected-repository-reader")
+		}
+	}
+	return nil
+}
+
+func (client *Client) CreatePersonalPrivate(ctx context.Context) error {
+	user, err := client.readUser(ctx)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(client.repository.Name(), "/")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], user.Login) {
+		return githubError("personal-repository-owner-mismatch")
+	}
+	payload, err := json.Marshal(struct {
+		Name        string `json:"name"`
+		Private     bool   `json:"private"`
+		HasIssues   bool   `json:"has_issues"`
+		HasProjects bool   `json:"has_projects"`
+		HasWiki     bool   `json:"has_wiki"`
+		AutoInit    bool   `json:"auto_init"`
+	}{Name: parts[1], Private: true, HasIssues: true, AutoInit: true})
+	if err != nil {
+		return githubError("repository-create-invalid")
+	}
+	response, err := client.request(ctx, http.MethodPost, "/user/repos", payload)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		return githubError("repository-create-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return githubError("repository-create-response-invalid")
 	}
 	var repository repositoryResponse
 	if err := json.Unmarshal(encoded, &repository); err != nil || repository.FullName != client.repository.Name() ||
@@ -101,6 +191,144 @@ func (client *Client) VerifyPrivate(ctx context.Context) error {
 		return githubError("private-repository-required")
 	}
 	return nil
+}
+
+func (client *Client) EnsureControlFile(ctx context.Context, path string, content []byte) (bool, error) {
+	if path != ".github/workflows/execute-request.yml" && path != "control-version.json" {
+		return false, githubError("control-file-path-denied")
+	}
+	if len(content) == 0 || len(content) > 256*1024 {
+		return false, githubError("control-file-content-invalid")
+	}
+	if err := client.VerifyExclusivePrivate(ctx); err != nil {
+		return false, err
+	}
+	apiPath := "/repos/" + client.repository.Name() + "/contents/" + path
+	response, err := client.request(ctx, http.MethodGet, apiPath, nil)
+	if err != nil {
+		return false, err
+	}
+	if response.StatusCode == http.StatusOK {
+		defer response.Body.Close()
+		encoded, readErr := readResponse(response.Body)
+		if readErr != nil {
+			return false, githubError("control-file-response-invalid")
+		}
+		var existing contentResponse
+		if json.Unmarshal(encoded, &existing) != nil || existing.Type != "file" || existing.Encoding != "base64" || existing.SHA == "" {
+			return false, githubError("control-file-response-invalid")
+		}
+		existingContent, decodeErr := base64.StdEncoding.DecodeString(strings.ReplaceAll(existing.Content, "\n", ""))
+		if decodeErr != nil || !bytes.Equal(existingContent, content) {
+			return false, githubError("control-file-conflict")
+		}
+		return false, nil
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		return false, githubError("control-file-read-failed")
+	}
+	payload, err := json.Marshal(createFileRequest{
+		Message: "Install Agent Workstation Gateway control file",
+		Content: base64.StdEncoding.EncodeToString(content),
+	})
+	if err != nil {
+		return false, githubError("control-file-encode-failed")
+	}
+	created, err := client.request(ctx, http.MethodPut, apiPath, payload)
+	if err != nil {
+		return false, err
+	}
+	defer created.Body.Close()
+	if created.StatusCode != http.StatusCreated {
+		return false, githubError("control-file-create-failed")
+	}
+	return true, nil
+}
+
+func (client *Client) RegistrationToken(ctx context.Context) ([]byte, error) {
+	return client.runnerToken(ctx, "registration-token")
+}
+
+func (client *Client) RemovalToken(ctx context.Context) ([]byte, error) {
+	return client.runnerToken(ctx, "remove-token")
+}
+
+func (client *Client) readRepository(ctx context.Context) (repositoryResponse, error) {
+	if client == nil || ctx == nil || len(client.token) == 0 {
+		return repositoryResponse{}, githubError("client-closed")
+	}
+	response, err := client.request(ctx, http.MethodGet, "/repos/"+client.repository.Name(), nil)
+	if err != nil {
+		return repositoryResponse{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return repositoryResponse{}, githubError("repository-read-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return repositoryResponse{}, githubError("repository-response-invalid")
+	}
+	var repository repositoryResponse
+	if err := json.Unmarshal(encoded, &repository); err != nil {
+		return repositoryResponse{}, githubError("repository-response-invalid")
+	}
+	return repository, nil
+}
+
+func (client *Client) readUser(ctx context.Context) (userResponse, error) {
+	response, err := client.request(ctx, http.MethodGet, "/user", nil)
+	if err != nil {
+		return userResponse{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return userResponse{}, githubError("authenticated-user-read-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return userResponse{}, githubError("authenticated-user-response-invalid")
+	}
+	var user userResponse
+	if json.Unmarshal(encoded, &user) != nil || user.Login == "" {
+		return userResponse{}, githubError("authenticated-user-response-invalid")
+	}
+	return user, nil
+}
+
+func (client *Client) runnerToken(ctx context.Context, kind string) ([]byte, error) {
+	if kind != "registration-token" && kind != "remove-token" {
+		return nil, githubError("runner-token-kind-invalid")
+	}
+	if err := client.VerifyExclusivePrivate(ctx); err != nil {
+		return nil, err
+	}
+	response, err := client.request(ctx, http.MethodPost, "/repos/"+client.repository.Name()+"/actions/runners/"+kind, []byte("{}"))
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		return nil, githubError("runner-token-request-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return nil, githubError("runner-token-response-invalid")
+	}
+	var result runnerTokenResponse
+	if json.Unmarshal(encoded, &result) != nil || !validToken([]byte(result.Token)) {
+		return nil, githubError("runner-token-response-invalid")
+	}
+	return []byte(result.Token), nil
+}
+
+func readResponse(reader io.Reader) ([]byte, error) {
+	encoded, err := io.ReadAll(io.LimitReader(reader, maxResponseBytes+1))
+	if err != nil || len(encoded) > maxResponseBytes {
+		return nil, githubError("response-size-invalid")
+	}
+	return encoded, nil
 }
 
 func (client *Client) PublishAccepted(ctx context.Context, record v1.AcceptedRequestRecord) error {

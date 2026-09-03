@@ -120,6 +120,7 @@ Completed foundation work:
 - closed shell startup plans that carry arbitrary script content only as stdin data;
 - concurrent full-stream output hashing/counting with bounded retained prefixes;
 - shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
+- Windows create-new installation transaction with pinned broker/control/runner images, private personal control-repository bootstrap, fixed runner registration/service installation, and fixed service startup.
 - Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
 - Windows mandatory-token `CreateProcessAsUserW` and Job Object process-tree implementation (without installed-account/service E2E claims).
 - Windows machine-protected credential file and fixed-account batch-logon/profile token source (without installer-created-account success claims).

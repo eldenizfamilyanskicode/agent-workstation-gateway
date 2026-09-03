@@ -54,7 +54,7 @@ func BuildPlan(installationRoot string) (Plan, error) {
 	if err != nil {
 		return Plan{}, installError("installation-root-invalid")
 	}
-	executable := layout.BinDirectory + `\awg-broker.exe`
+	executable := layout.BrokerExecutable
 	arguments := []string{"--installation-root", installationRoot}
 	command := syscall.EscapeArg(executable)
 	for _, argument := range arguments {

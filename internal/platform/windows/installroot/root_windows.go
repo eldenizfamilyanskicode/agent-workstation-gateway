@@ -160,12 +160,19 @@ func (lease *Lease) WriteProtectedFile(path string, content []byte) error {
 }
 
 func (lease *Lease) WriteBrokerImage(ctx context.Context, image []byte) error {
+	return lease.writeExecutable(ctx, lease.layout.BrokerExecutable, "broker", image)
+}
+
+func (lease *Lease) WriteControlImage(ctx context.Context, image []byte) error {
+	return lease.writeExecutable(ctx, lease.layout.ControlExecutable, "control", image)
+}
+
+func (lease *Lease) writeExecutable(ctx context.Context, path string, component string, image []byte) error {
 	if lease == nil || ctx == nil {
 		return rootError("dependency-required")
 	}
 	lease.mu.Lock()
 	defer lease.mu.Unlock()
-	path := lease.layout.BinDirectory + `\awg-broker.exe`
 	if lease.closed {
 		return rootError("lease-closed")
 	}
@@ -173,7 +180,7 @@ func (lease *Lease) WriteBrokerImage(ctx context.Context, image []byte) error {
 		return err
 	}
 	if lease.attempted[path] {
-		return rootError("broker-image-already-attempted")
+		return rootError(component + "-image-already-attempted")
 	}
 	lease.attempted[path] = true
 	created, err := lease.backend.CreateExecutable(path, image)
@@ -181,7 +188,7 @@ func (lease *Lease) WriteBrokerImage(ctx context.Context, image []byte) error {
 		lease.files = append(lease.files, ownedFile{path: path, kind: executableFile})
 	}
 	if err != nil || !created {
-		return rootError("broker-image-create-failed")
+		return rootError(component + "-image-create-failed")
 	}
 	return nil
 }

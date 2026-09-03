@@ -11,6 +11,10 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 )
 
+// gatewaySourceSHA is set by the trusted release build with
+// -ldflags=-X=main.gatewaySourceSHA=<lowercase-40-hex-commit>.
+var gatewaySourceSHA string
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -39,10 +43,14 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "usage:")
 	fmt.Fprintln(writer, "  awg install --dry-run --spec <path>")
+	fmt.Fprintln(writer, "  awg install --spec <path> --repository <owner/name> --broker-image <path> --control-image <path> --runner-archive <path> --hosted-control-url <url> --hosted-control-sha256 <digest> [--create-repository]")
 	fmt.Fprintln(writer, "  awg execute-local --accepted <path> --attempt <id> --output <path>")
 }
 
 func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
+	if !containsArgument(args, "--dry-run") {
+		return runInstallMutation(ctx, args, stdout, stderr, gatewaySourceSHA)
+	}
 	flags := flag.NewFlagSet("awg install", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	dryRun := flags.Bool("dry-run", false, "validate and print the bounded installation plan without mutation")
@@ -85,6 +93,15 @@ func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.
 		return 1
 	}
 	return 0
+}
+
+func containsArgument(args []string, expected string) bool {
+	for _, argument := range args {
+		if argument == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func readBounded(path string, maximum int) ([]byte, error) {
