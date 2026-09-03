@@ -131,11 +131,12 @@ Completed foundation work:
 - Windows broker startup composition from exact protected fixed state, native-only system-directory facts, execution-authority separation, real launcher/collector/session dependencies, and owned one-connection lifecycle (installed-identity E2E remains).
 - service-only Windows `awg-broker` executable with exact LocalSystem/SCM gates, deterministic stop/shutdown ownership, and a closed per-connection retry policy (installed-host E2E remains).
 - fixed create-new Windows broker-service registration with minimal SCM rights, disabled security-first staging, exact LocalSystem/Administrators service ACL, bounded recovery, independent verification, and create-owned rollback (elevated isolated-host evidence remains).
+- create-new Windows installer transaction composing account/SID, workload ACL, protected root/image/state, execution-secret clearing, and fixed service leases under reverse rollback (not yet exposed by the CLI or elevated-smoke verified).
 
 Not implemented yet at this checkpoint:
 
 - Go control executable, Linux native IPC/artifact implementation, and remaining installed-host integration;
-- Windows mutating installer composition, service start/integration, and uninstall lifecycle;
+- Windows installer CLI/runner composition, service start/integration, and uninstall lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
 - Linux/systemd implementation and smoke tests;
@@ -165,6 +166,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0014 — Windows Broker Startup Composition`](docs/adr/0014-windows-broker-startup-composition.md)
 - [`ADR 0015 — Windows SCM Broker Service Lifecycle`](docs/adr/0015-windows-scm-broker-service.md)
 - [`ADR 0016 — Windows Broker Service Registration`](docs/adr/0016-windows-broker-service-registration.md)
+- [`ADR 0017 — Windows Create-New Installer Transaction`](docs/adr/0017-windows-create-new-installer-transaction.md)
 
 ## Contributing and security
 

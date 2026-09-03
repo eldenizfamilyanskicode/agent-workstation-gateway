@@ -14,7 +14,7 @@ Account provisioning is an elevated local installation action. It is not part of
 
 Initial v0.1 installation is create-new-only for both configured local account names. Preflight requires both names to be absent before password generation or mutation. A future repair/adoption design must prove ownership from protected installed state and requires a separate decision.
 
-The installer generates two independent 32-byte mutable passwords from `crypto/rand`. Generation guarantees upper-case, lower-case, digit, and punctuation classes, then cryptographically shuffles all positions. Password bytes are never formatted as a Go string by the transaction and are cleared when the account lease commits or rolls back.
+The installer generates two independent 32-byte mutable passwords from `crypto/rand`. Generation guarantees upper-case, lower-case, digit, and punctuation classes, then cryptographically shuffles all positions. Password bytes are never formatted as a Go string by the transaction. Both are cleared when the account lease commits or rolls back; the composite installer additionally clears the execution password immediately after protected credential materialization.
 
 The native boundary is constructed from the validated install specification and accepts only its control/execution names. `NetUserAdd` creates a normal standard local account with a non-expiring machine-generated password. The returned user SID is resolved natively; the expected primary-group SID is built-in Users.
 
@@ -31,7 +31,7 @@ No input supplies these strings. After `LsaAddAccountRights`, direct rights are 
 
 `CreateAccount` reports whether NetAPI created the account even if later SID resolution fails. The orchestration lease records that fact before processing the error. Rollback deletes created accounts in reverse order and native deletion requires same-process transaction ownership. A pre-existing account is never a rollback target. Commit preserves accounts and clears both password buffers.
 
-The execution password is consumed by the protected-state materializer from ADR 0007/WU016. The control password remains live only until the later runner-service installation step gives Windows service management the credential; it is not a workload or control-repository secret.
+The execution password is consumed by the protected-state materializer from ADR 0007/WU016 and explicitly cleared before broker-service registration. The control password remains live only until the later runner-service installation step gives Windows service management the credential; it is not a workload or control-repository secret. ADR 0017 composes these lifetimes without prematurely committing the account lease.
 
 ## Alternatives considered
 
