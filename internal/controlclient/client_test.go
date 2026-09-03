@@ -245,6 +245,7 @@ func validAccepted(t *testing.T) v1.AcceptedRequestRecord {
 	t.Helper()
 	request := v1.Request{
 		ProtocolVersion: v1.Version, RequestID: "request-1", SessionID: "session-1", Actor: "codex",
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		Shell: v1.ShellPwsh, WorkingDirectory: `C:\Users\Alice\Projects\demo`, Script: "Get-Date\n",
 		TimeoutSeconds: 60, MaxOutputBytes: 1024, Artifacts: []v1.ArtifactSelection{},
 	}

@@ -24,7 +24,6 @@ Protocol v1 deliberately has no request fields for:
 - runner, broker, service, account, ACL, or capability management;
 - Docker or other host-powerful capabilities;
 - result-publication credentials;
-- persistent-process lifecycle operations.
 
 Unknown fields are rejected. Adding one of these names to an issue body therefore cannot turn it into management authority.
 
@@ -36,7 +35,7 @@ Each record is exactly one UTF-8 JSON object. Encoded limits are 65,536 bytes fo
 
 - A UTF-8 byte-order mark is not accepted as JSON syntax.
 - Invalid UTF-8 is rejected rather than replaced.
-- Every declared field is required. This includes zero-valued scalar fields, explicit `null` for an unavailable exit code, and empty artifact arrays.
+- Every declared field is required. This includes an empty `process_id` for foreground execution, explicit `null` for an unavailable exit code, and empty artifact arrays.
 - Unknown fields, duplicate object keys at any depth, trailing JSON values, and malformed JSON are rejected.
 - No implicit defaults are applied during decoding or canonicalization.
 
@@ -50,6 +49,8 @@ The JSON Schema provides a portable structural preflight. The Go implementation 
 | `request_id` | string | 1–64 ASCII bytes; lowercase letters, digits, `.`, `_`, and `-`; starts with a letter or digit. Stable idempotency identity. |
 | `session_id` | string | Same syntax as `request_id`. Groups related requests without granting global ordering or authority. |
 | `actor` | string | Same syntax as `request_id`. Descriptive requester identity; transport provenance remains authoritative. |
+| `operation` | string enum | `execute`, `start`, `status`, `stop`, or `logs`. These are execution-identity workload operations, never gateway administration. |
+| `process_id` | string | Empty for `execute`; otherwise a 1–64 byte identifier scoped by `session_id`. |
 | `shell` | string enum | One of `bash`, `cmd`, `git-bash`, `powershell`, or `pwsh`. The installed platform policy still decides whether that shell is available. |
 | `working_directory` | string | Canonical absolute Windows drive path or canonical absolute POSIX path; at most 1,024 UTF-8 bytes. This is a requested location, not authorization. |
 | `script` | string | Non-whitespace inline script, 1–49,152 UTF-8 bytes, with no NUL. It remains data until the restricted execution launch. |
@@ -58,6 +59,8 @@ The JSON Schema provides a portable structural preflight. The Go implementation 
 | `artifacts` | array | Zero to eight artifact-selection groups. Must be `[]`, not `null`, when unused. |
 
 All identifiers are case-sensitive. Protocol validation does not infer actor authority from the `actor` string; the private control transport binds the accepted request to sender metadata from the immutable opened-event snapshot.
+
+`start` launches the supplied script under the same fixed identity, sanitized environment, approved working directory, and native process-tree boundary as `execute`; `timeout_seconds` is its maximum lifetime. `status` returns state metadata, `logs` returns bounded retained output plus metadata, and `stop` synchronously reaps the owned tree. Those three lifecycle requests use the exact placeholder `"-"` in `script`, require no artifacts, and can address only the same `session_id`/`process_id` and original working directory. Broker restart or uninstall reaps all registered trees.
 
 ## Working-directory syntax
 

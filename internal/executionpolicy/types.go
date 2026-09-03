@@ -23,6 +23,8 @@ type LaunchPlan struct {
 	RequestDigest     string
 	SessionID         string
 	AttemptID         string
+	Operation         v1.RequestOperation
+	ProcessID         string
 	ExecutionIdentity installconfig.Principal
 	Shell             v1.Shell
 	Executable        string

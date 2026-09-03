@@ -38,6 +38,8 @@ func (launcher *fakeLauncher) Start(_ context.Context, launch NativeLaunch, stdo
 type fakeProcess struct {
 	exit           chan ProcessExit
 	terminateErr   error
+	terminateExit  *ProcessExit
+	terminateOnce  sync.Once
 	mu             sync.Mutex
 	terminateCalls int
 }
@@ -48,9 +50,16 @@ func (process *fakeProcess) Exit() <-chan ProcessExit {
 
 func (process *fakeProcess) TerminateTree(_ context.Context) error {
 	process.mu.Lock()
-	defer process.mu.Unlock()
 	process.terminateCalls++
-	return process.terminateErr
+	err := process.terminateErr
+	process.mu.Unlock()
+	if err == nil && process.terminateExit != nil {
+		process.terminateOnce.Do(func() {
+			process.exit <- *process.terminateExit
+			close(process.exit)
+		})
+	}
+	return err
 }
 
 func (process *fakeProcess) terminations() int {
@@ -396,6 +405,7 @@ func mustRunner(t *testing.T, launcher Launcher, collector ArtifactCollector, ti
 func validLaunchPlan() executionpolicy.LaunchPlan {
 	return executionpolicy.LaunchPlan{
 		RequestID: "req-000001", RequestDigest: strings.Repeat("a", 64), SessionID: "example-session", AttemptID: "attempt-000001",
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		ExecutionIdentity: installconfig.Principal{Name: "awg-exec", Identifier: "1001", PrimaryGroupIdentifier: "1001"},
 		Shell:             v1.ShellBash, Executable: "/usr/bin/bash", WorkingDirectory: "/home/alice/projects/demo", ApprovedRoot: "/home/alice/projects",
 		Script: "printf 'SYNTHETIC-REQUEST-SCRIPT-9d61\\n'\n", TimeoutSeconds: 1, MaxOutputBytes: v1.MinOutputBytes,

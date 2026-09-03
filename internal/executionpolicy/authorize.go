@@ -60,6 +60,8 @@ func Authorize(
 		RequestDigest:     envelope.AcceptedRequest.RequestDigest,
 		SessionID:         request.SessionID,
 		AttemptID:         envelope.AttemptID,
+		Operation:         request.Operation,
+		ProcessID:         request.ProcessID,
 		ExecutionIdentity: configuration.ExecutionIdentity,
 		Shell:             request.Shell,
 		Executable:        executable,

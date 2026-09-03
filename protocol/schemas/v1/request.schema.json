@@ -10,6 +10,8 @@
     "request_id",
     "session_id",
     "actor",
+    "operation",
+    "process_id",
     "shell",
     "working_directory",
     "script",
@@ -39,6 +41,15 @@
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["execute", "start", "status", "stop", "logs"]
+    },
+    "process_id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^$|^[a-z0-9][a-z0-9._-]{0,63}$"
     },
     "shell": {
       "type": "string",

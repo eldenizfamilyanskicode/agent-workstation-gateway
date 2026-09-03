@@ -127,6 +127,7 @@ func testWorkflow() WorkflowContext {
 func testRequest() v1.Request {
 	return v1.Request{
 		ProtocolVersion: v1.Version, RequestID: "req-1", SessionID: "session-1", Actor: "alice",
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		Shell: v1.ShellPowerShell, WorkingDirectory: `C:\Users\Alice\Projects`, Script: "Write-Output hello",
 		TimeoutSeconds: 30, MaxOutputBytes: 4096, Artifacts: []v1.ArtifactSelection{},
 	}

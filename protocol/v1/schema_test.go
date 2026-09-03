@@ -22,8 +22,8 @@ func TestRequestSchemaIsStrictAndMatchesContract(t *testing.T) {
 	required := stringSlice(t, schema["required"])
 	sort.Strings(required)
 	expectedRequired := []string{
-		"actor", "artifacts", "max_output_bytes", "protocol_version", "request_id",
-		"script", "session_id", "shell", "timeout_seconds", "working_directory",
+		"actor", "artifacts", "max_output_bytes", "operation", "process_id", "protocol_version",
+		"request_id", "script", "session_id", "shell", "timeout_seconds", "working_directory",
 	}
 	if !equalStrings(required, expectedRequired) {
 		t.Fatalf("unexpected required fields: %#v", required)
@@ -39,6 +39,13 @@ func TestRequestSchemaIsStrictAndMatchesContract(t *testing.T) {
 	expectedShells := []string{string(ShellBash), string(ShellCmd), string(ShellGitBash), string(ShellPowerShell), string(ShellPwsh)}
 	if !equalStrings(actualShells, expectedShells) {
 		t.Fatalf("schema shell enum mismatch: %#v", actualShells)
+	}
+	operation := objectValue(t, properties["operation"])
+	actualOperations := stringSlice(t, operation["enum"])
+	expectedOperations := []string{"execute", "logs", "start", "status", "stop"}
+	sort.Strings(actualOperations)
+	if !equalStrings(actualOperations, expectedOperations) {
+		t.Fatalf("schema operation enum mismatch: %#v", actualOperations)
 	}
 	assertSchemaNumber(t, properties, "timeout_seconds", "minimum", MinTimeoutSeconds)
 	assertSchemaNumber(t, properties, "timeout_seconds", "maximum", MaxTimeoutSeconds)

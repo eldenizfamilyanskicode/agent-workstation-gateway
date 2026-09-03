@@ -54,6 +54,8 @@ func TestCanonicalRequestDigestIgnoresJSONFormattingAndPropertyOrder(t *testing.
   "request_id": "req-000001",
   "session_id": "example-session",
   "actor": "codex",
+  "operation": "execute",
+  "process_id": "",
   "shell": "pwsh",
   "working_directory": "C:\\Users\\Alice\\Projects\\demo",
   "script": "Get-ChildItem\n",
@@ -61,7 +63,7 @@ func TestCanonicalRequestDigestIgnoresJSONFormattingAndPropertyOrder(t *testing.
   "max_output_bytes": 1048576,
   "artifacts": []
 }`)
-	two := []byte(`{"artifacts":[],"max_output_bytes":1048576,"timeout_seconds":900,"script":"Get-ChildItem\n","working_directory":"C:\\Users\\Alice\\Projects\\demo","shell":"pwsh","actor":"codex","session_id":"example-session","request_id":"req-000001","protocol_version":1}`)
+	two := []byte(`{"artifacts":[],"max_output_bytes":1048576,"timeout_seconds":900,"script":"Get-ChildItem\n","working_directory":"C:\\Users\\Alice\\Projects\\demo","shell":"pwsh","process_id":"","operation":"execute","actor":"codex","session_id":"example-session","request_id":"req-000001","protocol_version":1}`)
 
 	requestOne, err := DecodeRequest(one)
 	if err != nil {

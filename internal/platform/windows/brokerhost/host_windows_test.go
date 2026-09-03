@@ -69,6 +69,13 @@ type fakeHandler struct {
 	handles int
 }
 
+type fakeExecutorCloser struct{ closes int }
+
+func (closer *fakeExecutorCloser) Close(context.Context) error {
+	closer.closes++
+	return nil
+}
+
 func (handler *fakeHandler) Handle(context.Context, brokersession.ContextTransport) error {
 	handler.handles++
 	return handler.err
@@ -308,15 +315,16 @@ func TestHandleOneAlwaysClosesAcceptedConnection(t *testing.T) {
 
 func TestRuntimeCloseIsIdempotent(t *testing.T) {
 	listener := &fakeListener{}
-	host := &Runtime{listener: listener, handler: &fakeHandler{}}
+	executor := &fakeExecutorCloser{}
+	host := &Runtime{listener: listener, handler: &fakeHandler{}, executor: executor}
 	if err := host.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if listener.closes != 1 {
-		t.Fatalf("listener closed %d times", listener.closes)
+	if listener.closes != 1 || executor.closes != 1 {
+		t.Fatalf("runtime resources closed %d / %d times", listener.closes, executor.closes)
 	}
 }
 

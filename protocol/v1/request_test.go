@@ -38,6 +38,8 @@ func TestValidateRequestRejectsInvalidFields(t *testing.T) {
 		{name: "request id", alter: func(request *Request) { request.RequestID = "UPPER" }, field: "request_id", rule: "invalid-identifier"},
 		{name: "session id", alter: func(request *Request) { request.SessionID = "" }, field: "session_id", rule: "invalid-identifier"},
 		{name: "actor", alter: func(request *Request) { request.Actor = strings.Repeat("a", MaxIdentifierBytes+1) }, field: "actor", rule: "invalid-identifier"},
+		{name: "operation", alter: func(request *Request) { request.Operation = "admin" }, field: "operation", rule: "unsupported-operation"},
+		{name: "execute process", alter: func(request *Request) { request.ProcessID = "server" }, field: "process_id", rule: "execute-requires-empty"},
 		{name: "shell", alter: func(request *Request) { request.Shell = "zsh" }, field: "shell", rule: "unsupported-shell"},
 		{name: "empty script", alter: func(request *Request) { request.Script = " \n\t" }, field: "script", rule: "empty-script"},
 		{name: "nul script", alter: func(request *Request) { request.Script = "echo\x00value" }, field: "script", rule: "contains-nul"},
@@ -51,6 +53,43 @@ func TestValidateRequestRejectsInvalidFields(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := validRequest()
+			test.alter(&request)
+			assertProtocolError(t, ValidateRequest(request), ErrorKindValidation, test.field, test.rule)
+		})
+	}
+}
+
+func TestValidateRequestBackgroundLifecycle(t *testing.T) {
+	for _, operation := range []RequestOperation{RequestOperationStart, RequestOperationStatus, RequestOperationStop, RequestOperationLogs} {
+		request := validRequest()
+		request.Operation = operation
+		request.ProcessID = "dev-server"
+		request.Artifacts = []ArtifactSelection{}
+		if operation != RequestOperationStart {
+			request.Script = "-"
+		}
+		if err := ValidateRequest(request); err != nil {
+			t.Fatalf("operation %q rejected: %v", operation, err)
+		}
+	}
+
+	tests := []struct {
+		name  string
+		alter func(*Request)
+		field string
+		rule  string
+	}{
+		{name: "missing process id", alter: func(request *Request) { request.ProcessID = "" }, field: "process_id", rule: "invalid-identifier"},
+		{name: "status script", alter: func(request *Request) { request.Operation = RequestOperationStatus; request.Script = "Get-Process" }, field: "script", rule: "lifecycle-placeholder-required"},
+		{name: "artifacts", alter: func(request *Request) {
+			request.Artifacts = []ArtifactSelection{{Name: "logs", Paths: []string{"server.log"}}}
+		}, field: "artifacts", rule: "lifecycle-requires-empty"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := validRequest()
+			request.Operation = RequestOperationStart
+			request.ProcessID = "dev-server"
 			test.alter(&request)
 			assertProtocolError(t, ValidateRequest(request), ErrorKindValidation, test.field, test.rule)
 		})
@@ -211,6 +250,8 @@ func validRequest() Request {
 		RequestID:        "req-000001",
 		SessionID:        "example-session",
 		Actor:            "codex",
+		Operation:        RequestOperationExecute,
+		ProcessID:        "",
 		Shell:            ShellPwsh,
 		WorkingDirectory: `C:\Users\Alice\Projects\demo`,
 		Script:           "Get-ChildItem\n",

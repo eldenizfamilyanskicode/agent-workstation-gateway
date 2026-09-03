@@ -52,6 +52,8 @@ A command request is executable authority over the configured workstation scope.
 
 The current transport decision uses a bounded GitHub issue request in that private repository, a control-owned accepted-request ledger, a restricted self-hosted execution step, and a hosted finalization step. Requester authority is intentionally narrower than workflow, runner, repository-management, and workstation-management authority.
 
+Foreground commands and explicit session-owned `start`/`status`/`logs`/`stop` process operations share the same restricted identity and approved-root boundary. Background work is bounded, broker-owned, and reaped on timeout, stop, or broker shutdown; shell detachment is not a persistence mechanism.
+
 The bootstrap implementation will hard-fail if a selected control repository is public. The initial release will not provide an unsafe override.
 
 The implemented hosted accept/finalize boundary and inert workflow template are described in [`docs/private-control.md`](docs/private-control.md). The template belongs outside this source repository's active `.github/workflows` directory.

@@ -535,6 +535,7 @@ func sessionEnvelope(t *testing.T, artifacts []v1.ArtifactSelection) brokerproto
 	request := v1.Request{
 		ProtocolVersion: v1.Version,
 		RequestID:       "request-1", SessionID: "session-1", Actor: "alice", Shell: v1.ShellPowerShell,
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		WorkingDirectory: `C:\Users\Alice\Projects\demo`, Script: "Write-Output 'hello'",
 		TimeoutSeconds: 30, MaxOutputBytes: 4096, Artifacts: artifacts,
 	}

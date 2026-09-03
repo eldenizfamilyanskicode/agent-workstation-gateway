@@ -84,6 +84,8 @@ The client sends a fixed four-byte preface so the server can read a message befo
 
 One authenticated connection now maps to one broker session: bounded envelope read, strict decode, authorization, shared execution lifecycle, report binding, and one terminal response. Default fixed local deadlines are 30 seconds for the request, 30 minutes for response streaming, and 30 seconds per terminal-ack read. A request cannot change them. The completion ACK prevents premature message-pipe disconnect; invalid or absent ACK remains bounded and fails the exchange.
 
+Background `start`, `status`, `logs`, and `stop` operations use the same authenticated session path and restricted Windows launcher. Their in-memory registry is keyed by session/process ID, capped at 32 entries, checks the original canonical working directory, and retains only bounded stdout/stderr prefixes. `start` keeps the Job Object and execution-token/profile lease owned by the broker; `stop`, lifetime expiry, service shutdown, and process exit synchronously reap the full job. See [ADR 0020](adr/0020-bounded-background-process-lifecycle.md).
+
 The Windows broker host now loads only exact protected state paths derived from the installation root, denies overlap with every execution-owned root, obtains the Windows directory through the native API instead of copying the service environment, and composes the real token/launcher/collector/session/listener graph without a current-user fallback. Credential protection is revalidated on every acquisition. Each accepted connection is closed after one session. See [ADR 0014](adr/0014-windows-broker-startup-composition.md).
 
 ## SCM broker lifecycle

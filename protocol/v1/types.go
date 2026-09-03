@@ -6,6 +6,8 @@ const Version ProtocolVersion = 1
 
 type Shell string
 
+type RequestOperation string
+
 const (
 	ShellBash       Shell = "bash"
 	ShellCmd        Shell = "cmd"
@@ -14,11 +16,21 @@ const (
 	ShellPwsh       Shell = "pwsh"
 )
 
+const (
+	RequestOperationExecute RequestOperation = "execute"
+	RequestOperationStart   RequestOperation = "start"
+	RequestOperationStatus  RequestOperation = "status"
+	RequestOperationStop    RequestOperation = "stop"
+	RequestOperationLogs    RequestOperation = "logs"
+)
+
 type Request struct {
 	ProtocolVersion  ProtocolVersion     `json:"protocol_version"`
 	RequestID        string              `json:"request_id"`
 	SessionID        string              `json:"session_id"`
 	Actor            string              `json:"actor"`
+	Operation        RequestOperation    `json:"operation"`
+	ProcessID        string              `json:"process_id"`
 	Shell            Shell               `json:"shell"`
 	WorkingDirectory string              `json:"working_directory"`
 	Script           string              `json:"script"`

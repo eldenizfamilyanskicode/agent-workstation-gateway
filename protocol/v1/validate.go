@@ -17,6 +17,14 @@ var supportedShells = map[Shell]struct{}{
 	ShellPwsh:       {},
 }
 
+var supportedRequestOperations = map[RequestOperation]struct{}{
+	RequestOperationExecute: {},
+	RequestOperationStart:   {},
+	RequestOperationStatus:  {},
+	RequestOperationStop:    {},
+	RequestOperationLogs:    {},
+}
+
 var reservedWindowsNames = map[string]struct{}{
 	"aux":  {},
 	"con":  {},
@@ -65,6 +73,16 @@ func ValidateRequest(request Request) error {
 	if err := validateIdentifier("actor", request.Actor); err != nil {
 		return err
 	}
+	if _, supported := supportedRequestOperations[request.Operation]; !supported {
+		return validationError("operation", "unsupported-operation")
+	}
+	if request.Operation == RequestOperationExecute {
+		if request.ProcessID != "" {
+			return validationError("process_id", "execute-requires-empty")
+		}
+	} else if err := validateIdentifier("process_id", request.ProcessID); err != nil {
+		return err
+	}
 	if _, supported := supportedShells[request.Shell]; !supported {
 		return validationError("shell", "unsupported-shell")
 	}
@@ -74,13 +92,22 @@ func ValidateRequest(request Request) error {
 	if err := validateScript(request.Script); err != nil {
 		return err
 	}
+	if request.Operation != RequestOperationExecute && request.Operation != RequestOperationStart && request.Script != "-" {
+		return validationError("script", "lifecycle-placeholder-required")
+	}
 	if request.TimeoutSeconds < MinTimeoutSeconds || request.TimeoutSeconds > MaxTimeoutSeconds {
 		return validationError("timeout_seconds", "outside-allowed-range")
 	}
 	if request.MaxOutputBytes < MinOutputBytes || request.MaxOutputBytes > MaxOutputBytes {
 		return validationError("max_output_bytes", "outside-allowed-range")
 	}
-	return validateArtifactSelections(request.Artifacts)
+	if err := validateArtifactSelections(request.Artifacts); err != nil {
+		return err
+	}
+	if request.Operation != RequestOperationExecute && len(request.Artifacts) != 0 {
+		return validationError("artifacts", "lifecycle-requires-empty")
+	}
+	return nil
 }
 
 func validateIdentifier(field string, value string) error {

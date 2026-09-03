@@ -73,6 +73,8 @@ func validExecuteEnvelope(t *testing.T) ExecuteEnvelope {
 		RequestID:        "req-000001",
 		SessionID:        "example-session",
 		Actor:            "codex",
+		Operation:        v1.RequestOperationExecute,
+		ProcessID:        "",
 		Shell:            v1.ShellPwsh,
 		WorkingDirectory: `C:\Users\Alice\Projects\demo`,
 		Script:           "Get-ChildItem\n",

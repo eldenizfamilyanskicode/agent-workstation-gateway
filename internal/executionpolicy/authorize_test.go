@@ -54,7 +54,8 @@ func TestAuthorizeBuildsFixedIdentityLaunchPlan(t *testing.T) {
 			t.Fatal("control credential marker name reached workload environment")
 		}
 	}
-	if plan.RequestDigest != envelope.AcceptedRequest.RequestDigest || plan.Script != envelope.AcceptedRequest.Request.Script {
+	if plan.RequestDigest != envelope.AcceptedRequest.RequestDigest || plan.Script != envelope.AcceptedRequest.Request.Script ||
+		plan.Operation != envelope.AcceptedRequest.Request.Operation || plan.ProcessID != envelope.AcceptedRequest.Request.ProcessID {
 		t.Fatal("launch plan lost accepted request binding")
 	}
 }
@@ -149,6 +150,7 @@ func policyExecuteEnvelope(t *testing.T) brokerproto.ExecuteEnvelope {
 	t.Helper()
 	request := v1.Request{
 		ProtocolVersion: v1.Version, RequestID: "req-000001", SessionID: "example-session", Actor: "codex",
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		Shell: v1.ShellPwsh, WorkingDirectory: `C:\Users\Alice\Projects\demo`, Script: "Get-ChildItem\n",
 		TimeoutSeconds: 900, MaxOutputBytes: 1024 * 1024, Artifacts: []v1.ArtifactSelection{},
 	}

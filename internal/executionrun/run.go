@@ -3,6 +3,7 @@ package executionrun
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/artifactpattern"
@@ -23,6 +24,8 @@ type Runner struct {
 	timers                    TimerFactory
 	treeTerminationGrace      time.Duration
 	artifactCollectionTimeout time.Duration
+	backgroundMu              sync.Mutex
+	background                map[string]*backgroundProcess
 }
 
 func New(launcher Launcher, collector ArtifactCollector, options Options) (*Runner, error) {
@@ -51,10 +54,22 @@ func New(launcher Launcher, collector ArtifactCollector, options Options) (*Runn
 	return &Runner{
 		launcher: launcher, collector: collector, clock: clock, timers: timers,
 		treeTerminationGrace: treeTerminationGrace, artifactCollectionTimeout: artifactCollectionTimeout,
+		background: make(map[string]*backgroundProcess),
 	}, nil
 }
 
 func (runner *Runner) Run(ctx context.Context, plan executionpolicy.LaunchPlan, gatewaySourceSHA string) (Output, error) {
+	switch plan.Operation {
+	case v1.RequestOperationExecute:
+		return runner.runForeground(ctx, plan, gatewaySourceSHA)
+	case v1.RequestOperationStart, v1.RequestOperationStatus, v1.RequestOperationStop, v1.RequestOperationLogs:
+		return runner.runBackground(ctx, plan, gatewaySourceSHA)
+	default:
+		return Output{}, ErrInvalidLaunchPlan
+	}
+}
+
+func (runner *Runner) runForeground(ctx context.Context, plan executionpolicy.LaunchPlan, gatewaySourceSHA string) (Output, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}

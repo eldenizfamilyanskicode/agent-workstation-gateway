@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -53,6 +54,9 @@ type dependencies struct {
 type Runtime struct {
 	listener listener
 	handler  sessionHandler
+	executor interface {
+		Close(context.Context) error
+	}
 
 	mu        sync.Mutex
 	active    connection
@@ -139,7 +143,7 @@ func newRuntime(installationRoot string, gatewaySourceSHA string, deps dependenc
 		}
 		return nil, hostCause("listener-create-failed", err)
 	}
-	return &Runtime{listener: server, handler: session}, nil
+	return &Runtime{listener: server, handler: session, executor: runner}, nil
 }
 
 func validateAuthoritySeparation(layout installplan.Layout, configuration installconfig.Config) error {
@@ -229,6 +233,13 @@ func (host *Runtime) Close() error {
 			if err := active.Close(); err != nil {
 				host.closeErr = errors.Join(host.closeErr, hostCause("active-connection-close-failed", err))
 			}
+		}
+		if host.executor != nil {
+			shutdownContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if err := host.executor.Close(shutdownContext); err != nil {
+				host.closeErr = errors.Join(host.closeErr, hostCause("background-cleanup-failed", err))
+			}
+			cancel()
 		}
 	})
 	return host.closeErr

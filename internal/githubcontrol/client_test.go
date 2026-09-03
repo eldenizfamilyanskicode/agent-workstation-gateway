@@ -254,6 +254,7 @@ func githubAccepted(t *testing.T) v1.AcceptedRequestRecord {
 	t.Helper()
 	request := v1.Request{
 		ProtocolVersion: v1.Version, RequestID: "req-1", SessionID: "session-1", Actor: "alice", Shell: v1.ShellPowerShell,
+		Operation: v1.RequestOperationExecute, ProcessID: "",
 		WorkingDirectory: `C:\Users\Alice\Projects`, Script: "Write-Output hello", TimeoutSeconds: 30,
 		MaxOutputBytes: 4096, Artifacts: []v1.ArtifactSelection{},
 	}
