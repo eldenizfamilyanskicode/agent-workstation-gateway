@@ -50,7 +50,7 @@ jobs:
     permissions: {}
     steps:
       - name: Execute through installed gateway
-        shell: powershell
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         env:
           AWG_ACCEPTED_BASE64: ${{ needs.accept.outputs.accepted }}
         run: |

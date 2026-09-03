@@ -27,6 +27,7 @@ func TestRenderProducesInertPinnedPrivateControlFiles(t *testing.T) {
 	for _, required := range []string{
 		"issues:", "types: [opened]", "runs-on: ubuntu-latest", "runs-on: [agent-workstation-gateway]",
 		"permissions: {}", "contents: write", "actions: read", "--event \"$GITHUB_EVENT_PATH\"",
+		`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"`,
 		"actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
 		"actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
 		`C:\ProgramData\AgentWorkstationGateway-runner\_awg\awg.exe`,
