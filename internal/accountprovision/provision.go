@@ -166,6 +166,23 @@ func (lease *Lease) ExecutionPassword() []byte {
 	return lease.executionPassword
 }
 
+// ClearExecutionPassword releases broker-only launch material as soon as the
+// protected credential has been materialized, while preserving the control
+// password for the later runner-service installation step.
+func (lease *Lease) ClearExecutionPassword() error {
+	if lease == nil {
+		return provisionError("lease-invalid")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return provisionError("lease-closed")
+	}
+	zeroBytes(lease.executionPassword)
+	lease.executionPassword = nil
+	return nil
+}
+
 func (lease *Lease) Commit() error {
 	lease.mu.Lock()
 	defer lease.mu.Unlock()

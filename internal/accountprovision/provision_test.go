@@ -97,6 +97,24 @@ func TestProvisionBindsDistinctAccountsAndCommitClearsSecrets(t *testing.T) {
 	assertZeroed(t, execution)
 }
 
+func TestExecutionPasswordCanBeClearedBeforeControlCredentialConsumption(t *testing.T) {
+	native := &fakeNative{exists: make(map[string]bool)}
+	control := []byte("Synthetic-control-password-early-1!")
+	execution := []byte("Synthetic-execution-password-early-2!")
+	lease, err := Provision(context.Background(), accountSpec(), native, &fixedGenerator{passwords: [][]byte{control, execution}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	if err := lease.ClearExecutionPassword(); err != nil {
+		t.Fatal(err)
+	}
+	if lease.ExecutionPassword() != nil || lease.ControlPassword() == nil {
+		t.Fatal("execution clearing also removed or retained the wrong credential")
+	}
+	assertZeroed(t, execution)
+}
+
 func TestProvisionRollsBackOnlyCreatedAccountInReverseOrder(t *testing.T) {
 	native := &fakeNative{exists: make(map[string]bool), failCreate: "awg-exec"}
 	_, err := Provision(context.Background(), accountSpec(), native, &fixedGenerator{passwords: [][]byte{

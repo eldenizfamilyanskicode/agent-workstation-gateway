@@ -185,7 +185,9 @@ func (service *windowsService) Close() error {
 		return nil
 	}
 	err := service.service.Close()
-	service.service = nil
+	if err == nil {
+		service.service = nil
+	}
 	return err
 }
 

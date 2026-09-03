@@ -124,6 +124,24 @@ func TestProvisionOwnsCreateVerifyRollbackAndCommit(t *testing.T) {
 	}
 }
 
+func TestFailedCommitKeepsServiceOwnedForRollback(t *testing.T) {
+	service := &fakeManagedService{closeErr: errors.New("synthetic close failure")}
+	lease, err := provision(context.Background(), `C:\ProgramData\AgentWorkstationGateway`, &fakeBackend{
+		created: true, service: service,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInstallRule(t, lease.Commit(), "service-handle-close-failed")
+	service.closeErr = nil
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if service.deleteCalls != 1 || service.closeCalls != 2 {
+		t.Fatal("failed commit abandoned service ownership instead of allowing rollback")
+	}
+}
+
 func TestProvisionRejectsPreexistingServiceWithoutAdoption(t *testing.T) {
 	native := &fakeBackend{exists: true, service: &fakeManagedService{}}
 	lease, err := provision(context.Background(), `C:\ProgramData\AgentWorkstationGateway`, native)

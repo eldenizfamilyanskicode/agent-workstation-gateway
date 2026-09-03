@@ -126,10 +126,11 @@ func (lease *Lease) Commit() error {
 	if lease.closed || lease.service == nil {
 		return installError("lease-closed")
 	}
-	lease.committed = true
 	if err := lease.service.Close(); err != nil {
 		return installError("service-handle-close-failed")
 	}
+	lease.committed = true
+	lease.closed = true
 	lease.service = nil
 	return nil
 }
