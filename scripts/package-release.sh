@@ -70,6 +70,5 @@ touch -d "@$epoch" "$output/awg-control_${release}_linux_amd64"
 (cd "$work" && zip -X -q -9 -r "$output/$windows.zip" "$windows")
 tar --sort=name --format=ustar --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -C "$work" -czf "$output/$linux.tar.gz" "$linux"
 
-LC_ALL=C sha256sum "$output"/awg_* | sed 's#  .*/#  #' > "$output/SHA256SUMS"
+LC_ALL=C sha256sum "$output"/awg_* "$output"/awg-control_* | sed 's#  .*/#  #' > "$output/SHA256SUMS"
 cat "$output/SHA256SUMS"
-
