@@ -76,7 +76,7 @@ func InspectInstalled(ctx context.Context, installationRoot, sourceSHA string) (
 		maximum    int64
 		executable bool
 	}{
-		{layout.Root, true, 0o750, 0, false}, {layout.BinDirectory, true, 0o755, 0, false}, {layout.StateDirectory, true, 0o700, 0, false},
+		{layout.Root, true, 0o711, 0, false}, {layout.BinDirectory, true, 0o755, 0, false}, {layout.StateDirectory, true, 0o700, 0, false},
 		{layout.BrokerExecutable, false, 0o755, 128 * 1024 * 1024, true}, {layout.ControlExecutable, false, 0o755, 128 * 1024 * 1024, true},
 		{layout.InstallationConfig, false, 0o600, installconfig.MaxConfigBytes, false},
 		{layout.InstallationMetadata, false, 0o600, installmetadata.MaxBytes, false},
@@ -202,10 +202,10 @@ func verifyEffectiveService(ctx context.Context, controlAccount string) error {
 	for _, item := range []struct {
 		unit, expected string
 	}{
-		{installer.BrokerUnitName, "User=root\nGroup=root\nNoNewPrivileges=yes\nPrivateTmp=no\nProtectSystem=strict\nRestrictSUIDSGID=no"},
+		{installer.BrokerUnitName, "User=root\nGroup=root\nNoNewPrivileges=yes\nPrivateTmp=no\nProtectSystem=strict\nRestrictSUIDSGID=no\nAmbientCapabilities=cap_chown cap_kill cap_setgid cap_setuid"},
 		{installer.RunnerUnitName, "User=" + controlAccount + "\nGroup=" + controlAccount + "\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nRestrictSUIDSGID=no"},
 	} {
-		command := exec.CommandContext(ctx, "systemctl", "show", item.unit, "--property=User,Group,NoNewPrivileges,PrivateTmp,ProtectSystem,RestrictSUIDSGID")
+		command := exec.CommandContext(ctx, "systemctl", "show", item.unit, "--property=User,Group,NoNewPrivileges,PrivateTmp,ProtectSystem,RestrictSUIDSGID,AmbientCapabilities")
 		output, err := command.Output()
 		if err != nil {
 			return doctorError("unit-effective-policy-unavailable")

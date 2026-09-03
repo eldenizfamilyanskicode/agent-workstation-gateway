@@ -140,7 +140,7 @@ func Provision(ctx context.Context, input Input) (resultErr error) {
 	if err != nil {
 		return installerError("identity-binding-invalid")
 	}
-	if err := createDirectory(layout.Root, 0o750, 0, 0); err != nil {
+	if err := createDirectory(layout.Root, 0o711, 0, 0); err != nil {
 		return installerError("installation-root-create-failed")
 	}
 	createdRoot = true
@@ -415,7 +415,7 @@ func ExpectedBrokerUnit(layout installplan.Layout, specification installplan.Spe
 	return "[Unit]\nDescription=Agent Workstation Gateway broker\nAfter=network.target\n\n[Service]\nType=simple\n" +
 		"ExecStart=" + layout.BrokerExecutable + " --installation-root " + layout.Root + "\nUser=root\nGroup=root\n" +
 		"NoNewPrivileges=true\nPrivateTmp=false\nProtectSystem=strict\nProtectKernelTunables=true\nProtectKernelModules=true\n" +
-		"ProtectControlGroups=true\nRestrictSUIDSGID=false\nRuntimeDirectory=agent-workstation-gateway\nRuntimeDirectoryMode=0750\nCapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN\n" +
+		"ProtectControlGroups=true\nRestrictSUIDSGID=false\nRuntimeDirectory=agent-workstation-gateway\nRuntimeDirectoryMode=0750\nCapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN\nAmbientCapabilities=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN\n" +
 		"ReadWritePaths=" + strings.Join(readWrite, " ") + "\nRestart=on-failure\nRestartSec=2s\nTimeoutStopSec=30s\n\n[Install]\nWantedBy=multi-user.target\n"
 }
 

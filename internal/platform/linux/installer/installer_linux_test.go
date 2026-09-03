@@ -19,7 +19,7 @@ func TestExpectedUnitsRetainSecurityBoundary(t *testing.T) {
 		ProfileRoot: "/var/lib/awg-exec", TempRoot: "/var/tmp/awg-exec", ApprovedRoots: []string{"/srv/awg/projects"}}
 	broker := ExpectedBrokerUnit(layout, specification)
 	runner := ExpectedRunnerUnit(layout, specification.ControlAccount)
-	for _, expected := range []string{"User=root", "NoNewPrivileges=true", "PrivateTmp=false", "ProtectSystem=strict", "RestrictSUIDSGID=false", "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN", "ReadWritePaths=/run/agent-workstation-gateway"} {
+	for _, expected := range []string{"User=root", "NoNewPrivileges=true", "PrivateTmp=false", "ProtectSystem=strict", "RestrictSUIDSGID=false", "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN", "AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_KILL CAP_CHOWN", "ReadWritePaths=/run/agent-workstation-gateway"} {
 		if !strings.Contains(broker, expected) {
 			t.Fatalf("broker unit is missing %q", expected)
 		}

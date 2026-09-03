@@ -215,13 +215,22 @@ func PrepareHelperIdentity(uidText, gidText string) bool {
 		return false
 	}
 	groups, err := os.Getgroups()
-	if err != nil || len(groups) != 0 || !capabilitiesEmpty() {
+	if err != nil || len(groups) != 0 || !clearCapabilities() || !capabilitiesEmpty() {
 		return false
 	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return false
 	}
 	return unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0) == nil && noNewPrivilegesSet()
+}
+
+func clearCapabilities() bool {
+	header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	data := [2]unix.CapUserData{}
+	if err := unix.Capset(&header, &data[0]); err != nil {
+		return false
+	}
+	return unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) == nil
 }
 
 func parseID(value, prefix string) (uint32, error) {
