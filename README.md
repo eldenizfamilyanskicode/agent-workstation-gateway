@@ -127,14 +127,15 @@ Completed foundation work:
 - fixed Windows named-pipe transport with first-instance/local-only policy, exact protected DACL verification, bounded framing, and exact impersonated control-SID authentication (installed-account and remote-host evidence reserved for isolated verification).
 - Windows artifact collection under exact execution-token impersonation with portable bounded globs, link/final-path enforcement, stable content handles, and explicit omissions (broker upload and installed-token evidence remain).
 - strict one-exchange broker response streaming with canonical reports, bounded retained output, stable artifact-handle chunks, end-to-end length/digest checks, and transactional receiver cleanup (real broker dependency composition and upload remain).
-- one-request broker session orchestration with immutable installed policy, authorize-before-run ordering, coarse failures, fixed I/O deadlines, report rebinding, and authenticated Windows pipe integration using fake execution internals (real service composition remains).
-- Windows broker startup composition from exact protected fixed state, native-only system-directory facts, execution-authority separation, real launcher/collector/session dependencies, and owned one-connection lifecycle (SCM hosting and installed-identity E2E remain).
-- service-only Windows `awg-broker` executable with exact LocalSystem/SCM gates, deterministic stop/shutdown ownership, and a closed per-connection retry policy (service registration and installed-host E2E remain).
+- one-request broker session orchestration with immutable installed policy, authorize-before-run ordering, coarse failures, fixed I/O deadlines, report rebinding, and authenticated Windows pipe integration using fake execution internals (control-side integration remains).
+- Windows broker startup composition from exact protected fixed state, native-only system-directory facts, execution-authority separation, real launcher/collector/session dependencies, and owned one-connection lifecycle (installed-identity E2E remains).
+- service-only Windows `awg-broker` executable with exact LocalSystem/SCM gates, deterministic stop/shutdown ownership, and a closed per-connection retry policy (installed-host E2E remains).
+- fixed create-new Windows broker-service registration with minimal SCM rights, disabled security-first staging, exact LocalSystem/Administrators service ACL, bounded recovery, independent verification, and create-owned rollback (elevated isolated-host evidence remains).
 
 Not implemented yet at this checkpoint:
 
 - Go control executable, Linux native IPC/artifact implementation, and remaining installed-host integration;
-- Windows mutating installer, service registration/recovery policy, and uninstall lifecycle;
+- Windows mutating installer composition, service start/integration, and uninstall lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
 - Linux/systemd implementation and smoke tests;
@@ -163,6 +164,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0013 — Bounded Broker Session Orchestration`](docs/adr/0013-bounded-broker-session-orchestration.md)
 - [`ADR 0014 — Windows Broker Startup Composition`](docs/adr/0014-windows-broker-startup-composition.md)
 - [`ADR 0015 — Windows SCM Broker Service Lifecycle`](docs/adr/0015-windows-scm-broker-service.md)
+- [`ADR 0016 — Windows Broker Service Registration`](docs/adr/0016-windows-broker-service-registration.md)
 
 ## Contributing and security
 
