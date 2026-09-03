@@ -326,6 +326,28 @@ func (lease *Lease) VerifyRegistrationState(ctx context.Context) error {
 	return nil
 }
 
+// VerifyServiceExecutable revalidates the pinned runner service image through
+// an exact no-share handle immediately before SCM registration.
+func (lease *Lease) VerifyServiceExecutable(ctx context.Context) error {
+	if lease == nil || ctx == nil {
+		return storeError("dependency-required")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return storeError("lease-closed")
+	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	path := filepath.Join(lease.layout.RunnerRoot, "bin", "RunnerService.exe")
+	if _, owned := lease.ownedFileKeys[fold(path)]; !owned ||
+		validateObject(path, false, lease.controlSID, lease.executionSID) != nil {
+		return storeError("runner-service-executable-invalid")
+	}
+	return nil
+}
+
 func (lease *Lease) sealDirectoryLocked(ctx context.Context, directory string, count *int) error {
 	if err := contextError(ctx); err != nil {
 		return err

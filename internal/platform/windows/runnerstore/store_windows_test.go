@@ -51,6 +51,9 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 	if err != nil || string(content) != "listener" {
 		t.Fatalf("runner content changed: %q / %v", content, err)
 	}
+	if err := lease.VerifyServiceExecutable(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	marker := filepath.Join(filepath.Dir(layout.RunnerRoot), "preserve.txt")
 	if err := os.WriteFile(marker, []byte("preserve"), 0o600); err != nil {
 		t.Fatal(err)
