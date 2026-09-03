@@ -20,6 +20,9 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 		`C:\ProgramData\AgentWorkstationGateway`,
 		`C:\ProgramData\AgentWorkstationGateway\bin`,
 		`C:\ProgramData\AgentWorkstationGateway\state`,
+		`C:\ProgramData\AgentWorkstationGateway-runner`,
+		`C:\ProgramData\AgentWorkstationGateway-runner\_work`,
+		`C:\ProgramData\AgentWorkstationGateway-runner\responses`,
 		`C:\Users\Alice\Projects`,
 		`C:\ProgramData\AWGProfiles\Exec`,
 		`C:\ProgramData\AWGTemp`,
@@ -51,11 +54,14 @@ func TestWindowsLayoutDerivesOnlyFixedProtectedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := Layout{
-		Root:                `C:\ProgramData\AgentWorkstationGateway`,
-		BinDirectory:        `C:\ProgramData\AgentWorkstationGateway\bin`,
-		StateDirectory:      `C:\ProgramData\AgentWorkstationGateway\state`,
-		InstallationConfig:  `C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
-		ExecutionCredential: `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
+		Root:                    `C:\ProgramData\AgentWorkstationGateway`,
+		BinDirectory:            `C:\ProgramData\AgentWorkstationGateway\bin`,
+		StateDirectory:          `C:\ProgramData\AgentWorkstationGateway\state`,
+		InstallationConfig:      `C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
+		ExecutionCredential:     `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
+		RunnerRoot:              `C:\ProgramData\AgentWorkstationGateway-runner`,
+		RunnerWorkDirectory:     `C:\ProgramData\AgentWorkstationGateway-runner\_work`,
+		RunnerResponseDirectory: `C:\ProgramData\AgentWorkstationGateway-runner\responses`,
 	}
 	if layout != expected {
 		t.Fatalf("unexpected layout: %#v", layout)
@@ -96,6 +102,28 @@ func TestValidateWindowsSpecRejectsProtectedRootOverlap(t *testing.T) {
 			specification := validWindowsSpec()
 			test.alter(&specification)
 			assertPlanError(t, Validate(specification), "installation_root", test.rule)
+		})
+	}
+}
+
+func TestValidateWindowsSpecRejectsDerivedRunnerRootOverlap(t *testing.T) {
+	tests := []struct {
+		name  string
+		alter func(*Spec)
+		field string
+		rule  string
+	}{
+		{name: "approved root", alter: func(spec *Spec) { spec.ApprovedRoots = []string{spec.InstallationRoot + "-runner"} }, field: "installation_root", rule: "derived-runner-overlaps-approved-root"},
+		{name: "profile root", alter: func(spec *Spec) { spec.ProfileRoot = spec.InstallationRoot + `-runner\profile` }, field: "installation_root", rule: "derived-runner-overlaps-profile-root"},
+		{name: "temp root", alter: func(spec *Spec) { spec.TempRoot = spec.InstallationRoot + `-runner\temp` }, field: "installation_root", rule: "derived-runner-overlaps-temp-root"},
+		{name: "shell", alter: func(spec *Spec) { spec.Shells[0].Executable = spec.InstallationRoot + `-runner\bin\pwsh.exe` }, field: "shells.executable", rule: "inside-derived-runner-root"},
+		{name: "path", alter: func(spec *Spec) { spec.PathEntries[0] = spec.InstallationRoot + `-runner\bin` }, field: "path_entries", rule: "inside-derived-runner-root"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			specification := validWindowsSpec()
+			test.alter(&specification)
+			assertPlanError(t, Validate(specification), test.field, test.rule)
 		})
 	}
 }

@@ -24,11 +24,14 @@ type Spec struct {
 }
 
 type Layout struct {
-	Root                string `json:"root"`
-	BinDirectory        string `json:"bin_directory"`
-	StateDirectory      string `json:"state_directory"`
-	InstallationConfig  string `json:"installation_config"`
-	ExecutionCredential string `json:"execution_credential"`
+	Root                    string `json:"root"`
+	BinDirectory            string `json:"bin_directory"`
+	StateDirectory          string `json:"state_directory"`
+	InstallationConfig      string `json:"installation_config"`
+	ExecutionCredential     string `json:"execution_credential"`
+	RunnerRoot              string `json:"runner_root"`
+	RunnerWorkDirectory     string `json:"runner_work_directory"`
+	RunnerResponseDirectory string `json:"runner_response_directory"`
 }
 
 type Operation struct {

@@ -47,6 +47,31 @@ func Validate(specification Spec) error {
 	if platformpath.Overlaps(platformpath.Windows, protectedRoot, specification.TempRoot) {
 		return planError("installation_root", "overlaps-temp-root")
 	}
+	runnerRoot, err := windowsRunnerRoot(specification.InstallationRoot)
+	if err != nil {
+		return err
+	}
+	for _, root := range specification.ApprovedRoots {
+		if platformpath.Overlaps(platformpath.Windows, runnerRoot, root) {
+			return planError("installation_root", "derived-runner-overlaps-approved-root")
+		}
+	}
+	if platformpath.Overlaps(platformpath.Windows, runnerRoot, specification.ProfileRoot) {
+		return planError("installation_root", "derived-runner-overlaps-profile-root")
+	}
+	if platformpath.Overlaps(platformpath.Windows, runnerRoot, specification.TempRoot) {
+		return planError("installation_root", "derived-runner-overlaps-temp-root")
+	}
+	for _, shell := range specification.Shells {
+		if platformpath.Contains(platformpath.Windows, runnerRoot, shell.Executable) {
+			return planError("shells.executable", "inside-derived-runner-root")
+		}
+	}
+	for _, pathEntry := range specification.PathEntries {
+		if platformpath.Contains(platformpath.Windows, runnerRoot, pathEntry) {
+			return planError("path_entries", "inside-derived-runner-root")
+		}
+	}
 	return nil
 }
 
@@ -62,6 +87,9 @@ func Build(specification Spec) (Plan, error) {
 		{Kind: "ensure_protected_directory", Target: layout.Root},
 		{Kind: "ensure_protected_directory", Target: layout.BinDirectory},
 		{Kind: "ensure_protected_directory", Target: layout.StateDirectory},
+		{Kind: "create_control_runner_root", Target: layout.RunnerRoot},
+		{Kind: "create_control_runner_work", Target: layout.RunnerWorkDirectory},
+		{Kind: "create_control_runner_responses", Target: layout.RunnerResponseDirectory},
 	}
 	operations = append(operations, workloadFilesystemOperations(specification)...)
 	operations = append(operations,
@@ -84,13 +112,29 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 		platformpath.IsFilesystemRoot(platformpath.Windows, installationRoot) {
 		return Layout{}, planError("installation_root", "invalid-or-filesystem-root")
 	}
+	runnerRoot, err := windowsRunnerRoot(installationRoot)
+	if err != nil {
+		return Layout{}, err
+	}
 	return Layout{
-		Root:                installationRoot,
-		BinDirectory:        joinWindows(installationRoot, "bin"),
-		StateDirectory:      joinWindows(installationRoot, "state"),
-		InstallationConfig:  joinWindows(installationRoot, "state", "installation.json"),
-		ExecutionCredential: joinWindows(installationRoot, "state", "execution-credential.dpapi"),
+		Root:                    installationRoot,
+		BinDirectory:            joinWindows(installationRoot, "bin"),
+		StateDirectory:          joinWindows(installationRoot, "state"),
+		InstallationConfig:      joinWindows(installationRoot, "state", "installation.json"),
+		ExecutionCredential:     joinWindows(installationRoot, "state", "execution-credential.dpapi"),
+		RunnerRoot:              runnerRoot,
+		RunnerWorkDirectory:     joinWindows(runnerRoot, "_work"),
+		RunnerResponseDirectory: joinWindows(runnerRoot, "responses"),
 	}, nil
+}
+
+func windowsRunnerRoot(installationRoot string) (string, error) {
+	runnerRoot := installationRoot + "-runner"
+	if platformpath.ValidateAbsolute(platformpath.Windows, runnerRoot) != nil ||
+		platformpath.IsFilesystemRoot(platformpath.Windows, runnerRoot) {
+		return "", planError("installation_root", "derived-runner-root-invalid")
+	}
+	return runnerRoot, nil
 }
 
 func workloadFilesystemOperations(specification Spec) []Operation {
