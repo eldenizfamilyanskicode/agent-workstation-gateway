@@ -1,0 +1,13 @@
+{
+  "config_version": 1,
+  "platform": "linux",
+  "installation_root": "/opt/agent-workstation-gateway",
+  "control_account": "awg-control",
+  "execution_account": "awg-exec",
+  "approved_roots": ["/srv/awg/projects"],
+  "shells": [{"shell": "bash", "executable": "/bin/bash"}],
+  "profile_root": "/var/lib/awg/exec",
+  "temp_root": "/var/tmp/awg-exec",
+  "path_entries": ["/usr/bin", "/bin"],
+  "capabilities": []
+}

@@ -60,3 +60,22 @@ func TestRenderRejectsUnpinnedOrUnsafeConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderProducesLinuxRunnerWorkflow(t *testing.T) {
+	files, err := Render(Config{
+		GatewaySourceSHA: testSourceSHA, ControlBinaryURL: "https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/download/v0.1.0/awg-control-linux-amd64",
+		ControlBinarySHA256: testDigest, InstallationRoot: "/opt/agent-workstation-gateway",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(files[0].Content)
+	for _, required := range []string{"shell: bash", "base64 --decode", "/opt/agent-workstation-gateway-runner/_awg/awg", "${{ runner.temp }}/awg-exchange/response"} {
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("Linux workflow is missing %q", required)
+		}
+	}
+	if strings.Contains(workflow, "powershell") || strings.Contains(workflow, "__AWG_") {
+		t.Fatal("Linux workflow retained Windows behavior or a placeholder")
+	}
+}

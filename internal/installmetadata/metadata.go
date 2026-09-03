@@ -44,9 +44,10 @@ func (failure *Error) Error() string {
 }
 
 func Validate(metadata Metadata) error {
-	if metadata.MetadataVersion != Version || metadata.Platform != platformpath.Windows ||
-		platformpath.ValidateAbsolute(platformpath.Windows, metadata.InstallationRoot) != nil ||
-		platformpath.IsFilesystemRoot(platformpath.Windows, metadata.InstallationRoot) ||
+	if metadata.MetadataVersion != Version ||
+		(metadata.Platform != platformpath.Windows && metadata.Platform != platformpath.Linux) ||
+		platformpath.ValidateAbsolute(metadata.Platform, metadata.InstallationRoot) != nil ||
+		platformpath.IsFilesystemRoot(metadata.Platform, metadata.InstallationRoot) ||
 		!sourceversion.IsCanonicalGitSHA(metadata.GatewaySourceSHA) {
 		return metadataError("identity-invalid")
 	}

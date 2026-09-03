@@ -57,6 +57,28 @@ func TestWindowsInstallExampleDecodesAndBuilds(t *testing.T) {
 	}
 }
 
+func TestLinuxInstallSchemaAndExampleMatchContract(t *testing.T) {
+	schema := readSchemaObject(t, repositoryFile(t, "config", "schemas", "v1", "linux-install.schema.json"))
+	if schema["type"] != "object" || schema["additionalProperties"] != false ||
+		schema["x-awg-max-encoded-bytes"] != float64(MaxSpecBytes) {
+		t.Fatal("Linux install schema root differs from the strict contract")
+	}
+	encoded, err := os.ReadFile(repositoryFile(t, "config", "examples", "v1", "linux-install.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification, err := Decode(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specification.Platform != "linux" || len(specification.Capabilities) != 0 {
+		t.Fatal("Linux example selected an invalid platform or powerful capability")
+	}
+	if _, err := Build(specification); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func repositoryFile(t *testing.T, parts ...string) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)

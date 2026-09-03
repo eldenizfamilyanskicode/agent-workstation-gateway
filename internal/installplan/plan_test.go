@@ -83,6 +83,36 @@ func TestWindowsLayoutRejectsNoncanonicalOrFilesystemRoot(t *testing.T) {
 	}
 }
 
+func TestBuildLinuxPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
+	specification := validLinuxSpec()
+	plan, err := Build(specification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := LinuxLayout(specification.InstallationRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Platform != platformpath.Linux || layout.ExecutionCredential != "" ||
+		layout.BrokerExecutable != "/opt/agent-workstation-gateway/bin/awg-broker" ||
+		layout.RunnerControlExecutable != "/opt/agent-workstation-gateway-runner/_awg/awg" {
+		t.Fatalf("unexpected Linux plan: %#v / %#v", plan, layout)
+	}
+	for _, operation := range plan.Operations {
+		if operation.Kind == "write_execution_credential" {
+			t.Fatal("Linux plan unexpectedly stores an execution credential")
+		}
+	}
+}
+
+func TestLinuxLayoutRejectsNoncanonicalOrFilesystemRoot(t *testing.T) {
+	for _, root := range []string{"relative/awg", "/", "/opt/../awg", "/opt//awg"} {
+		if _, err := LinuxLayout(root); err == nil {
+			t.Fatalf("invalid installation root was accepted: %q", root)
+		}
+	}
+}
+
 func TestDecodeWindowsSpecRejectsAuthorityFields(t *testing.T) {
 	encoded := []byte(`{
 		"config_version":1,"platform":"windows","installation_root":"C:\\ProgramData\\AgentWorkstationGateway",
@@ -162,6 +192,17 @@ func validWindowsSpec() Spec {
 		Shells:        []installconfig.ShellBinding{{Shell: v1.ShellPwsh, Executable: `C:\Program Files\PowerShell\7\pwsh.exe`}},
 		ProfileRoot:   `C:\ProgramData\AWGProfiles\Exec`, TempRoot: `C:\ProgramData\AWGTemp`,
 		PathEntries: []string{`C:\Program Files\PowerShell\7`, `C:\Windows\System32`}, Capabilities: []installconfig.Capability{},
+	}
+}
+
+func validLinuxSpec() Spec {
+	return Spec{
+		ConfigVersion: installconfig.CurrentVersion, Platform: platformpath.Linux,
+		InstallationRoot: "/opt/agent-workstation-gateway", ControlAccount: "awg-control", ExecutionAccount: "awg-exec",
+		ApprovedRoots: []string{"/srv/awg/projects"},
+		Shells:        []installconfig.ShellBinding{{Shell: v1.ShellBash, Executable: "/bin/bash"}},
+		ProfileRoot:   "/var/lib/awg/exec", TempRoot: "/var/tmp/awg-exec",
+		PathEntries: []string{"/usr/bin", "/bin"}, Capabilities: []installconfig.Capability{},
 	}
 }
 

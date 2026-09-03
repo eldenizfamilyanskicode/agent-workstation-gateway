@@ -12,7 +12,7 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 )
 
-//go:embed .github/workflows/execute-request.yml control-version.json
+//go:embed .github/workflows/execute-request.yml execute-request-linux.yml control-version.json
 var files embed.FS
 
 var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -38,17 +38,16 @@ func (failure *Error) Error() string {
 }
 
 func Render(config Config) ([]RenderedFile, error) {
+	platform, layout, err := renderLayout(config.InstallationRoot)
 	if !sourceversion.IsCanonicalGitSHA(config.GatewaySourceSHA) || !digestPattern.MatchString(config.ControlBinarySHA256) ||
-		!validReleaseURL(config.ControlBinaryURL) ||
-		platformpath.ValidateAbsolute(platformpath.Windows, config.InstallationRoot) != nil ||
-		platformpath.IsFilesystemRoot(platformpath.Windows, config.InstallationRoot) || strings.Contains(config.InstallationRoot, "'") {
+		!validReleaseURL(config.ControlBinaryURL) || err != nil || strings.Contains(config.InstallationRoot, "'") {
 		return nil, templateError("config-invalid")
 	}
-	layout, err := installplan.WindowsLayout(config.InstallationRoot)
-	if err != nil {
-		return nil, templateError("config-invalid")
+	templateWorkflow := ".github/workflows/execute-request.yml"
+	if platform == platformpath.Linux {
+		templateWorkflow = "execute-request-linux.yml"
 	}
-	paths := []string{".github/workflows/execute-request.yml", "control-version.json"}
+	paths := []string{templateWorkflow, "control-version.json"}
 	result := make([]RenderedFile, 0, len(paths))
 	for _, path := range paths {
 		content, err := files.ReadFile(path)
@@ -80,9 +79,23 @@ func Render(config Config) ([]RenderedFile, error) {
 		if path == "control-version.json" && !json.Valid([]byte(rendered)) {
 			return nil, templateError("metadata-invalid")
 		}
-		result = append(result, RenderedFile{Path: path, Content: []byte(rendered)})
+		outputPath := path
+		if path == templateWorkflow {
+			outputPath = ".github/workflows/execute-request.yml"
+		}
+		result = append(result, RenderedFile{Path: outputPath, Content: []byte(rendered)})
 	}
 	return result, nil
+}
+
+func renderLayout(root string) (platformpath.Platform, installplan.Layout, error) {
+	if layout, err := installplan.WindowsLayout(root); err == nil {
+		return platformpath.Windows, layout, nil
+	}
+	if layout, err := installplan.LinuxLayout(root); err == nil {
+		return platformpath.Linux, layout, nil
+	}
+	return "", installplan.Layout{}, templateError("installation-root-invalid")
 }
 
 func validReleaseURL(value string) bool {

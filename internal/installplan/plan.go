@@ -2,6 +2,7 @@ package installplan
 
 import (
 	"errors"
+	"path"
 	"strings"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
@@ -12,23 +13,35 @@ const (
 	placeholderControlSID   = "S-1-5-21-1000-1000-1000-1001"
 	placeholderExecutionSID = "S-1-5-21-1000-1000-1000-1002"
 	placeholderUsersSID     = "S-1-5-32-545"
+	placeholderControlUID   = "uid:1001"
+	placeholderExecutionUID = "uid:1002"
+	placeholderControlGID   = "gid:1001"
+	placeholderExecutionGID = "gid:1002"
 )
 
 func Validate(specification Spec) error {
 	if specification.ConfigVersion != installconfig.CurrentVersion {
 		return planError("config_version", "unsupported-version")
 	}
-	if specification.Platform != platformpath.Windows {
+	if specification.Platform != platformpath.Windows && specification.Platform != platformpath.Linux {
 		return planError("platform", "unsupported-platform")
 	}
-	if err := platformpath.ValidateAbsolute(platformpath.Windows, specification.InstallationRoot); err != nil ||
-		platformpath.IsFilesystemRoot(platformpath.Windows, specification.InstallationRoot) {
+	platform := specification.Platform
+	if err := platformpath.ValidateAbsolute(platform, specification.InstallationRoot); err != nil ||
+		platformpath.IsFilesystemRoot(platform, specification.InstallationRoot) {
 		return planError("installation_root", "invalid-or-filesystem-root")
 	}
-	configuration := configurationFromSpec(specification, IdentityBinding{
+	binding := IdentityBinding{
 		ControlIdentifier: placeholderControlSID, ControlPrimaryGroupIdentifier: placeholderUsersSID,
 		ExecutionIdentifier: placeholderExecutionSID, ExecutionPrimaryGroupIdentifier: placeholderUsersSID,
-	})
+	}
+	if platform == platformpath.Linux {
+		binding = IdentityBinding{
+			ControlIdentifier: placeholderControlUID, ControlPrimaryGroupIdentifier: placeholderControlGID,
+			ExecutionIdentifier: placeholderExecutionUID, ExecutionPrimaryGroupIdentifier: placeholderExecutionGID,
+		}
+	}
+	configuration := configurationFromSpec(specification, binding)
 	if err := installconfig.Validate(configuration); err != nil {
 		return translateConfigError(err)
 	}
@@ -37,38 +50,38 @@ func Validate(specification Spec) error {
 	}
 	protectedRoot := specification.InstallationRoot
 	for _, root := range specification.ApprovedRoots {
-		if platformpath.Overlaps(platformpath.Windows, protectedRoot, root) {
+		if platformpath.Overlaps(platform, protectedRoot, root) {
 			return planError("installation_root", "overlaps-approved-root")
 		}
 	}
-	if platformpath.Overlaps(platformpath.Windows, protectedRoot, specification.ProfileRoot) {
+	if platformpath.Overlaps(platform, protectedRoot, specification.ProfileRoot) {
 		return planError("installation_root", "overlaps-profile-root")
 	}
-	if platformpath.Overlaps(platformpath.Windows, protectedRoot, specification.TempRoot) {
+	if platformpath.Overlaps(platform, protectedRoot, specification.TempRoot) {
 		return planError("installation_root", "overlaps-temp-root")
 	}
-	runnerRoot, err := windowsRunnerRoot(specification.InstallationRoot)
+	runnerRoot, err := runnerRoot(platform, specification.InstallationRoot)
 	if err != nil {
 		return err
 	}
 	for _, root := range specification.ApprovedRoots {
-		if platformpath.Overlaps(platformpath.Windows, runnerRoot, root) {
+		if platformpath.Overlaps(platform, runnerRoot, root) {
 			return planError("installation_root", "derived-runner-overlaps-approved-root")
 		}
 	}
-	if platformpath.Overlaps(platformpath.Windows, runnerRoot, specification.ProfileRoot) {
+	if platformpath.Overlaps(platform, runnerRoot, specification.ProfileRoot) {
 		return planError("installation_root", "derived-runner-overlaps-profile-root")
 	}
-	if platformpath.Overlaps(platformpath.Windows, runnerRoot, specification.TempRoot) {
+	if platformpath.Overlaps(platform, runnerRoot, specification.TempRoot) {
 		return planError("installation_root", "derived-runner-overlaps-temp-root")
 	}
 	for _, shell := range specification.Shells {
-		if platformpath.Contains(platformpath.Windows, runnerRoot, shell.Executable) {
+		if platformpath.Contains(platform, runnerRoot, shell.Executable) {
 			return planError("shells.executable", "inside-derived-runner-root")
 		}
 	}
 	for _, pathEntry := range specification.PathEntries {
-		if platformpath.Contains(platformpath.Windows, runnerRoot, pathEntry) {
+		if platformpath.Contains(platform, runnerRoot, pathEntry) {
 			return planError("path_entries", "inside-derived-runner-root")
 		}
 	}
@@ -79,7 +92,13 @@ func Build(specification Spec) (Plan, error) {
 	if err := Validate(specification); err != nil {
 		return Plan{}, err
 	}
-	layout, err := WindowsLayout(specification.InstallationRoot)
+	var layout Layout
+	var err error
+	if specification.Platform == platformpath.Windows {
+		layout, err = WindowsLayout(specification.InstallationRoot)
+	} else {
+		layout, err = LinuxLayout(specification.InstallationRoot)
+	}
 	if err != nil {
 		return Plan{}, err
 	}
@@ -88,20 +107,22 @@ func Build(specification Spec) (Plan, error) {
 		{Kind: "ensure_protected_directory", Target: layout.BinDirectory},
 		{Kind: "ensure_protected_directory", Target: layout.StateDirectory},
 		{Kind: "create_control_runner_root", Target: layout.RunnerRoot},
-		{Kind: "create_control_client_directory", Target: joinWindows(layout.RunnerRoot, "_awg")},
+		{Kind: "create_control_client_directory", Target: joinPlatform(specification.Platform, layout.RunnerRoot, "_awg")},
 		{Kind: "write_control_client", Target: layout.RunnerControlExecutable},
 		{Kind: "create_control_runner_work", Target: layout.RunnerWorkDirectory},
 		{Kind: "create_control_runner_responses", Target: layout.RunnerResponseDirectory},
 	}
 	operations = append(operations, workloadFilesystemOperations(specification)...)
+	if layout.ExecutionCredential != "" {
+		operations = append(operations, Operation{Kind: "write_execution_credential", Target: layout.ExecutionCredential})
+	}
 	operations = append(operations,
-		Operation{Kind: "write_execution_credential", Target: layout.ExecutionCredential},
 		Operation{Kind: "write_installed_configuration", Target: layout.InstallationConfig},
 		Operation{Kind: "write_installation_metadata", Target: layout.InstallationMetadata},
 	)
 	return Plan{
 		PlanVersion: installconfig.CurrentVersion,
-		Platform:    platformpath.Windows,
+		Platform:    specification.Platform,
 		Layout:      layout,
 		Operations:  operations,
 	}, nil
@@ -115,7 +136,7 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 		platformpath.IsFilesystemRoot(platformpath.Windows, installationRoot) {
 		return Layout{}, planError("installation_root", "invalid-or-filesystem-root")
 	}
-	runnerRoot, err := windowsRunnerRoot(installationRoot)
+	runnerRoot, err := runnerRoot(platformpath.Windows, installationRoot)
 	if err != nil {
 		return Layout{}, err
 	}
@@ -135,10 +156,37 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 	}, nil
 }
 
-func windowsRunnerRoot(installationRoot string) (string, error) {
+// LinuxLayout derives every protected Linux installation path from one
+// canonical root. Runtime socket and systemd unit names remain fixed platform
+// constants and are never selected by a request.
+func LinuxLayout(installationRoot string) (Layout, error) {
+	if platformpath.ValidateAbsolute(platformpath.Linux, installationRoot) != nil ||
+		platformpath.IsFilesystemRoot(platformpath.Linux, installationRoot) {
+		return Layout{}, planError("installation_root", "invalid-or-filesystem-root")
+	}
+	runnerRoot, err := runnerRoot(platformpath.Linux, installationRoot)
+	if err != nil {
+		return Layout{}, err
+	}
+	return Layout{
+		Root:                    installationRoot,
+		BinDirectory:            path.Join(installationRoot, "bin"),
+		BrokerExecutable:        path.Join(installationRoot, "bin", "awg-broker"),
+		ControlExecutable:       path.Join(installationRoot, "bin", "awg"),
+		StateDirectory:          path.Join(installationRoot, "state"),
+		InstallationConfig:      path.Join(installationRoot, "state", "installation.json"),
+		InstallationMetadata:    path.Join(installationRoot, "state", "management.json"),
+		RunnerRoot:              runnerRoot,
+		RunnerControlExecutable: path.Join(runnerRoot, "_awg", "awg"),
+		RunnerWorkDirectory:     path.Join(runnerRoot, "_work"),
+		RunnerResponseDirectory: path.Join(runnerRoot, "responses"),
+	}, nil
+}
+
+func runnerRoot(platform platformpath.Platform, installationRoot string) (string, error) {
 	runnerRoot := installationRoot + "-runner"
-	if platformpath.ValidateAbsolute(platformpath.Windows, runnerRoot) != nil ||
-		platformpath.IsFilesystemRoot(platformpath.Windows, runnerRoot) {
+	if platformpath.ValidateAbsolute(platform, runnerRoot) != nil ||
+		platformpath.IsFilesystemRoot(platform, runnerRoot) {
 		return "", planError("installation_root", "derived-runner-root-invalid")
 	}
 	return runnerRoot, nil
@@ -207,4 +255,11 @@ func translateConfigError(err error) error {
 
 func joinWindows(root string, segments ...string) string {
 	return root + `\` + strings.Join(segments, `\`)
+}
+
+func joinPlatform(platform platformpath.Platform, root string, segments ...string) string {
+	if platform == platformpath.Windows {
+		return joinWindows(root, segments...)
+	}
+	return path.Join(append([]string{root}, segments...)...)
 }
