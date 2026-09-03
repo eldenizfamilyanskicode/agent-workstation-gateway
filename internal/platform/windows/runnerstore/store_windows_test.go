@@ -169,6 +169,13 @@ func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.
 			t.Fatalf("generated object was not protected: %v", err)
 		}
 	}
+	// Runner.Listener remove deletes its own registration files before the
+	// outer storage lease rolls back the remaining create-owned tree.
+	for _, name := range []string{".runner", ".credentials", ".credentials_rsaparams"} {
+		if err := os.Remove(filepath.Join(layout.RunnerRoot, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := lease.Close(); err != nil {
 		t.Fatal(err)
 	}

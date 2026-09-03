@@ -4,6 +4,7 @@ package runnerstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -242,12 +243,18 @@ func (lease *Lease) Close() error {
 	failed := false
 	for index := len(lease.ownedFiles) - 1; index >= 0; index-- {
 		path := lease.ownedFiles[index]
+		if objectMissing(path) {
+			continue
+		}
 		if validateObject(path, false, lease.controlSID, lease.executionSID) != nil || removeFile(path) != nil {
 			failed = true
 		}
 	}
 	for index := len(lease.ownedDirectories) - 1; index >= 0; index-- {
 		path := lease.ownedDirectories[index]
+		if objectMissing(path) {
+			continue
+		}
 		if validateObject(path, true, lease.controlSID, lease.executionSID) != nil || removeDirectory(path) != nil {
 			failed = true
 		}
@@ -647,6 +654,15 @@ func removeDirectory(path string) error {
 		return storeError("directory-remove-failed")
 	}
 	return nil
+}
+
+func objectMissing(path string) bool {
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return false
+	}
+	_, err = windows.GetFileAttributes(pointer)
+	return errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_PATH_NOT_FOUND)
 }
 
 func contextError(ctx context.Context) error {
