@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 )
 
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
@@ -19,16 +22,24 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return 2
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: awg install --dry-run --spec <path>")
+		printUsage(stderr)
 		return 2
 	}
 	switch args[0] {
 	case "install":
 		return runInstall(ctx, args[1:], stdout, stderr)
+	case "execute-local":
+		return runExecuteLocal(ctx, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintln(stderr, "unknown awg command")
 		return 2
 	}
+}
+
+func printUsage(writer io.Writer) {
+	fmt.Fprintln(writer, "usage:")
+	fmt.Fprintln(writer, "  awg install --dry-run --spec <path>")
+	fmt.Fprintln(writer, "  awg execute-local --accepted <path> --attempt <id> --output <path>")
 }
 
 func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {

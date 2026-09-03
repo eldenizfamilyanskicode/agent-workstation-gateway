@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,19 +17,19 @@ import (
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/brokerproto"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/brokersession"
-	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/brokerwire"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/controlclient"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/executionpolicy"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/executionrun"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
-	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/ipcframe"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/brokeripc"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/controlresponse"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 	v1 "github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/v1"
 )
 
 const integrationSourceSHA = "3333333333333333333333333333333333333333"
 
-func TestSessionRunsAcrossAuthenticatedWindowsPipe(t *testing.T) {
+func TestControlClientPublishesSessionAcrossAuthenticatedWindowsPipe(t *testing.T) {
 	configuration := integrationConfiguration(t)
 	launcher := &integrationLauncher{}
 	runner, err := executionrun.New(launcher, nil, executionrun.Options{})
@@ -64,25 +66,28 @@ func TestSessionRunsAcrossAuthenticatedWindowsPipe(t *testing.T) {
 		closeErr := connection.Close()
 		served <- errors.Join(handleErr, closeErr)
 	}()
-	client, err := brokeripc.Dial(ctx)
+	outputParent := filepath.Join(t.TempDir(), "responses")
+	if err := os.Mkdir(outputParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(outputParent, "attempt-1")
+	destination, err := controlresponse.New(outputPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer destination.Abort()
 	envelope := integrationEnvelope(t)
-	encoded, err := brokerproto.MarshalCanonicalExecuteEnvelope(envelope)
-	if err != nil {
+	if err := controlclient.Exchange(
+		ctx, integrationPipeDialer{}, envelope.AcceptedRequest, envelope.AttemptID, destination,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := ipcframe.Write(client, encoded, brokerproto.MaxExecuteEnvelopeBytes); err != nil {
-		t.Fatal(err)
+	stdout, err := os.ReadFile(filepath.Join(outputPath, "stdout.bin"))
+	if err != nil || string(stdout) != "pipe-response\n" {
+		t.Fatalf("authenticated session response changed: %q / %v", stdout, err)
 	}
-	response, err := brokerwire.ReadResponseExchange(client, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(response.Stdout) != "pipe-response\n" || response.Report.AttemptID != envelope.AttemptID {
-		t.Fatalf("authenticated session response changed: %#v / %q", response.Report, response.Stdout)
+	if _, err := os.Stat(filepath.Join(outputPath, "execution-report.json")); err != nil {
+		t.Fatal("authenticated session report was not published")
 	}
 	if err := <-served; err != nil {
 		t.Fatal(err)
@@ -90,6 +95,12 @@ func TestSessionRunsAcrossAuthenticatedWindowsPipe(t *testing.T) {
 	if launcher.startCount() != 1 {
 		t.Fatalf("authenticated pipe session launched %d times", launcher.startCount())
 	}
+}
+
+type integrationPipeDialer struct{}
+
+func (integrationPipeDialer) Dial(ctx context.Context) (controlclient.Transport, error) {
+	return brokeripc.Dial(ctx)
 }
 
 type integrationResolver struct{ root string }
