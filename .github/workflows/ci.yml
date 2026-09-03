@@ -33,6 +33,10 @@ jobs:
             $unformattedFiles
             throw "gofmt reported unformatted files"
           }
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Scan reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - name: Vet packages
         run: go vet ./...
       - name: Test packages
@@ -67,6 +71,10 @@ jobs:
             $unformattedFiles
             throw "gofmt reported unformatted files"
           }
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Scan reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - name: Vet packages
         run: go vet ./...
       - name: Test packages
