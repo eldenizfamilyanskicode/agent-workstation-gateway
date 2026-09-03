@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,11 +12,13 @@ import (
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/controlplane"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/githubcontrol"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 	v1 "github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/v1"
 )
 
 // controlSourceSHA is set by the trusted release build with
 // -ldflags=-X=main.controlSourceSHA=<lowercase-40-hex-commit>.
+var controlVersion = "devel"
 var controlSourceSHA string
 
 type consumeEnvironment func(string) (string, bool)
@@ -46,6 +49,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		return runFinalize(ctx, args[1:], stdout, stderr, consume, now)
 	case "publish":
 		return runPublish(ctx, args[1:], stdout, stderr, consume)
+	case "version":
+		return runControlVersion(args[1:], stdout, stderr, controlVersion, sourceSHA)
 	default:
 		fmt.Fprintln(stderr, "unknown awg-control command")
 		return 2
@@ -57,6 +62,30 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  awg-control accept --event <path> --output <path>")
 	fmt.Fprintln(writer, "  awg-control finalize --accepted <path> --report <path> --output <path>")
 	fmt.Fprintln(writer, "  awg-control publish --kind accepted|result --input <path>")
+	fmt.Fprintln(writer, "  awg-control version")
+}
+
+func runControlVersion(args []string, stdout io.Writer, stderr io.Writer, version, sourceSHA string) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "version accepts no arguments")
+		return 2
+	}
+	if version == "" {
+		version = "devel"
+	}
+	if !sourceversion.IsCanonicalGitSHA(sourceSHA) {
+		sourceSHA = "unknown"
+	}
+	encoded, err := json.Marshal(struct {
+		Version   string `json:"version"`
+		SourceSHA string `json:"source_sha"`
+	}{Version: version, SourceSHA: sourceSHA})
+	if err != nil {
+		fmt.Fprintln(stderr, "version encoding failed")
+		return 1
+	}
+	_, _ = stdout.Write(append(encoded, '\n'))
+	return 0
 }
 
 func runAccept(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, consume consumeEnvironment, sourceSHA string, now func() time.Time) int {

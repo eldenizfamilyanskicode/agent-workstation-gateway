@@ -120,7 +120,7 @@ Run health checks with the matching installed binary:
 C:\ProgramData\AgentWorkstationGateway\bin\awg.exe doctor --installation-root C:\ProgramData\AgentWorkstationGateway
 ```
 
-Doctor reads only fixed protected files, validates both account identities and exact logon rights, approved/isolated-root ACL policy, protected runner credentials, exact service configuration/DACLs and running state, then revalidates private visibility, the exclusive reader boundary, the registered runner identity, and both fixed control-file digests. Its JSON output contains booleans only; it never displays credential or runner-state contents.
+Doctor reads only fixed protected files, validates both account identities and exact logon rights, approved/isolated-root ACL policy, protected runner credentials, exact service configuration/DACLs and running state, then revalidates private visibility, the exclusive reader boundary, the registered runner identity, and both fixed control-file digests. Its JSON output reports the build version, exact source SHA, and boundary booleans; it never displays credential or runner-state contents. `awg.exe version` reports the same release identity without inspecting installed state.
 
 Uninstall must be invoked from the matching release executable outside the protected installation root because Windows cannot remove the currently executing installed image:
 

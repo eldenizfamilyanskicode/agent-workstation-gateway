@@ -75,6 +75,26 @@ func TestInstallRejectsOversizedSpecWithoutEchoingPath(t *testing.T) {
 	}
 }
 
+func TestVersionReportsReleaseIdentity(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	sourceSHA := "0123456789abcdef0123456789abcdef01234567"
+	if exitCode := runVersion(nil, &stdout, &stderr, "v0.1.0", sourceSHA); exitCode != 0 || stderr.Len() != 0 {
+		t.Fatalf("version failed: exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	var record struct {
+		Version   string `json:"version"`
+		SourceSHA string `json:"source_sha"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &record); err != nil || record.Version != "v0.1.0" || record.SourceSHA != sourceSHA {
+		t.Fatalf("unexpected version record: %#v / %v", record, err)
+	}
+	stdout.Reset()
+	if exitCode := runVersion([]string{"extra"}, &stdout, &stderr, "v0.1.0", sourceSHA); exitCode != 2 || stdout.Len() != 0 {
+		t.Fatal("version accepted arguments")
+	}
+}
+
 func repositoryFile(t *testing.T, parts ...string) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)

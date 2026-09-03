@@ -92,6 +92,21 @@ func TestCommandsRejectBadInputsWithoutEchoingPaths(t *testing.T) {
 	}
 }
 
+func TestVersionReportsReleaseIdentity(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := runControlVersion(nil, &stdout, &stderr, "v0.1.0", testSourceSHA); exit != 0 || stderr.Len() != 0 {
+		t.Fatalf("version failed: exit=%d stderr=%q", exit, stderr.String())
+	}
+	var record struct {
+		Version   string `json:"version"`
+		SourceSHA string `json:"source_sha"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &record); err != nil || record.Version != "v0.1.0" || record.SourceSHA != testSourceSHA {
+		t.Fatalf("unexpected version record: %#v / %v", record, err)
+	}
+}
+
 func workflowEnvironment() map[string]string {
 	return map[string]string{
 		"GITHUB_REPOSITORY": "alice/example-control", "GITHUB_RUN_ID": "7", "GITHUB_RUN_ATTEMPT": "1",

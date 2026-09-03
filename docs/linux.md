@@ -54,6 +54,8 @@ sudo ./awg uninstall --installation-root /opt/agent-workstation-gateway
 
 `doctor` checks source binding, protected ownership/modes, identities, ACLs, runner credential denial, exact unit definitions/effective hardening, running services, socket policy, private-repository visibility, control-file hashes, and the registered runner.
 
+`awg version` reports the release version and exact embedded public source SHA without reading installed state. A successful `doctor` report includes the same fields alongside its boundary booleans.
+
 `uninstall` repeats the fail-closed installed and remote-state checks before mutation. It removes the registered runner and installer-owned control files, disables services, restores the saved approved-root ACLs, removes AWG-owned roots and identities, and preserves the private repository and its request/result ledger. Run it from the matching release binary outside the installation root.
 
 ## Security boundary

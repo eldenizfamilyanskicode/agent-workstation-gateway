@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -9,7 +10,11 @@ import (
 	"os/signal"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 )
+
+// gatewayVersion and gatewaySourceSHA are set by the trusted release build.
+var gatewayVersion = "devel"
 
 // gatewaySourceSHA is set by the trusted release build with
 // -ldflags=-X=main.gatewaySourceSHA=<lowercase-40-hex-commit>.
@@ -35,9 +40,11 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	case "execute-local":
 		return runExecuteLocal(ctx, args[1:], stdout, stderr)
 	case "doctor":
-		return runDoctor(ctx, args[1:], stdout, stderr, gatewaySourceSHA)
+		return runDoctor(ctx, args[1:], stdout, stderr, gatewayVersion, gatewaySourceSHA)
 	case "uninstall":
 		return runUninstall(ctx, args[1:], stdout, stderr, gatewaySourceSHA)
+	case "version":
+		return runVersion(args[1:], stdout, stderr, gatewayVersion, gatewaySourceSHA)
 	default:
 		fmt.Fprintln(stderr, "unknown awg command")
 		return 2
@@ -51,6 +58,31 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  awg execute-local --accepted <path> --attempt <id> --output <path>")
 	fmt.Fprintln(writer, "  awg doctor --installation-root <path>")
 	fmt.Fprintln(writer, "  awg uninstall --installation-root <path>")
+	fmt.Fprintln(writer, "  awg version")
+}
+
+func runVersion(args []string, stdout io.Writer, stderr io.Writer, version, sourceSHA string) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "version accepts no arguments")
+		return 2
+	}
+	if version == "" {
+		version = "devel"
+	}
+	if !sourceversion.IsCanonicalGitSHA(sourceSHA) {
+		sourceSHA = "unknown"
+	}
+	record := struct {
+		Version   string `json:"version"`
+		SourceSHA string `json:"source_sha"`
+	}{Version: version, SourceSHA: sourceSHA}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		fmt.Fprintln(stderr, "version encoding failed")
+		return 1
+	}
+	_, _ = stdout.Write(append(encoded, '\n'))
+	return 0
 }
 
 func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {

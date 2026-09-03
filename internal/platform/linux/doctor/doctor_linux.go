@@ -24,16 +24,18 @@ import (
 )
 
 type Report struct {
-	ProtectedState            bool `json:"protected_state"`
-	Identities                bool `json:"identities"`
-	FilesystemPolicy          bool `json:"filesystem_policy"`
-	RunnerState               bool `json:"runner_state"`
-	ServicePolicy             bool `json:"service_policy"`
-	ServicesRunning           bool `json:"services_running"`
-	PrivateRepository         bool `json:"private_repository"`
-	ExclusiveReaders          bool `json:"exclusive_readers"`
-	ExecutionCredentialDenied bool `json:"execution_credential_acl_denies"`
-	RunnerCredentialsDenied   bool `json:"runner_credentials_acl_denies"`
+	Version                   string `json:"version"`
+	SourceSHA                 string `json:"source_sha"`
+	ProtectedState            bool   `json:"protected_state"`
+	Identities                bool   `json:"identities"`
+	FilesystemPolicy          bool   `json:"filesystem_policy"`
+	RunnerState               bool   `json:"runner_state"`
+	ServicePolicy             bool   `json:"service_policy"`
+	ServicesRunning           bool   `json:"services_running"`
+	PrivateRepository         bool   `json:"private_repository"`
+	ExclusiveReaders          bool   `json:"exclusive_readers"`
+	ExecutionCredentialDenied bool   `json:"execution_credential_acl_denies"`
+	RunnerCredentialsDenied   bool   `json:"runner_credentials_acl_denies"`
 }
 
 type Installation struct {

@@ -13,7 +13,7 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/doctor"
 )
 
-func runDoctor(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, sourceSHA string) int {
+func runDoctor(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, version, sourceSHA string) int {
 	flags := flag.NewFlagSet("awg doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	installationRoot := flags.String("installation-root", "", "protected AWG installation root")
@@ -54,6 +54,8 @@ func runDoctor(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 	}
 	report.PrivateRepository = true
 	report.ExclusiveReaders = true
+	report.Version = version
+	report.SourceSHA = sourceSHA
 	encoded, err := json.Marshal(report)
 	if err != nil {
 		fmt.Fprintln(stderr, "doctor report encoding failed")
