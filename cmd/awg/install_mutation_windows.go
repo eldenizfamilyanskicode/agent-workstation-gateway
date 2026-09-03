@@ -194,7 +194,11 @@ func runInstallMutationWithDependencies(
 			RunnerName: *runnerName, GatewaySourceSHA: sourceSHA, ControlFiles: controlFiles,
 		},
 	})
-	if err != nil || lease == nil {
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if lease == nil {
 		fmt.Fprintln(stderr, "Windows installation transaction failed")
 		return 1
 	}
