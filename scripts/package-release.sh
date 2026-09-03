@@ -63,7 +63,10 @@ broker_ldflags="-s -w -X main.gatewaySourceSHA=$source_sha"
 
 cp "$repo/LICENSE" "$repo/README.md" "$repo/config/examples/v1/windows-install.json" "$work/$windows/"
 cp "$repo/LICENSE" "$repo/README.md" "$repo/config/examples/v1/linux-install.json" "$work/$linux/"
-chmod 0755 "$work/$linux/awg" "$work/$linux/awg-broker" "$output/awg-control_${release}_linux_amd64"
+chmod 0755 "$work/$windows/awg.exe" "$work/$windows/awg-broker.exe" \
+  "$work/$linux/awg" "$work/$linux/awg-broker" "$output/awg-control_${release}_linux_amd64"
+chmod 0644 "$work/$windows/LICENSE" "$work/$windows/README.md" "$work/$windows/windows-install.json" \
+  "$work/$linux/LICENSE" "$work/$linux/README.md" "$work/$linux/linux-install.json"
 find "$work/$windows" "$work/$linux" -exec touch -d "@$epoch" {} +
 touch -d "@$epoch" "$output/awg-control_${release}_linux_amd64"
 
