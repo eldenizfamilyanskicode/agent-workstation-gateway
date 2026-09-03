@@ -13,6 +13,8 @@ AWG v0.1 targets x86-64 Linux hosts using systemd. WSL2 is supported when the di
 
 Go is a build dependency only. Installed AWG binaries and workloads do not require a Go toolchain.
 
+For v0.1, download `actions-runner-linux-x64-2.337.0.tar.gz` only from the official [`actions/runner` v2.337.0 release](https://github.com/actions/runner/releases/tag/v2.337.0). Before installation require an exact size of `226430031` bytes and SHA-256 `70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613`. Also verify the AWG archive and hosted control helper against the release's `SHA256SUMS` before running either one.
+
 ## Plan first
 
 Create a specification from [`config/examples/v1/linux-install.json`](../config/examples/v1/linux-install.json), using synthetic or host-appropriate paths and two new dedicated account names. Review the mutation-free plan:
@@ -34,12 +36,12 @@ sudo ./awg install \
   --broker-image ./awg-broker \
   --control-image ./awg \
   --runner-archive ./actions-runner-linux-x64.tar.gz \
-  --hosted-control-url https://example.invalid/awg-control \
-  --hosted-control-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
+  --hosted-control-url https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/download/v0.1.0/awg-control_0.1.0_linux_amd64 \
+  --hosted-control-sha256 <digest-from-SHA256SUMS> \
   --create-repository
 ```
 
-Use the URL and SHA-256 published for the same AWG source commit. The zero digest and invalid domain above are placeholders, not usable values. Installation hard-fails for a public repository, mismatched binaries, an unpinned runner archive, existing owned paths, existing identities, or missing platform dependencies.
+Use the URL and SHA-256 published for the same AWG source commit. Installation hard-fails for a public repository, mismatched binaries, an unpinned runner archive, existing owned paths, existing identities, or missing platform dependencies.
 
 The mutating command creates two system users/groups, protected state, the restricted runner, fixed systemd units, and explicit ACLs. Registration tokens remain in memory and are not written to configuration or logs.
 
@@ -57,6 +59,10 @@ sudo ./awg uninstall --installation-root /opt/agent-workstation-gateway
 `awg version` reports the release version and exact embedded public source SHA without reading installed state. A successful `doctor` report includes the same fields alongside its boundary booleans.
 
 `uninstall` repeats the fail-closed installed and remote-state checks before mutation. It removes the registered runner and installer-owned control files, disables services, restores the saved approved-root ACLs, removes AWG-owned roots and identities, and preserves the private repository and its request/result ledger. Run it from the matching release binary outside the installation root.
+
+## Upgrade
+
+v0.1 has no in-place updater. Run `doctor`, then uninstall with the matching old release binary outside the installation root. Verify the new release assets and reinstall with the same reviewed specification and private repository. The ledger and development-root contents remain, but the gateway is offline during the transition. Finish with `doctor` and one minimal request. See [ADR 0022](adr/0022-v0.1-release-and-upgrade.md).
 
 ## Security boundary
 

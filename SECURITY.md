@@ -4,7 +4,7 @@ Agent Workstation Gateway is security-sensitive infrastructure because it mediat
 
 ## Current support status
 
-The project is pre-release. There is no supported stable version yet, and the repository must not be treated as production-ready until an explicit release states otherwise.
+The latest v0.1.x release receives security fixes. Earlier candidates and unreleased commits are unsupported. v0.1 is intended for trusted development-agent workloads on explicitly approved roots; it is not a malware sandbox or a production multi-tenant isolation boundary.
 
 ## Reporting a vulnerability
 

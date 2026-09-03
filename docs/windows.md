@@ -1,6 +1,6 @@
 # Windows Implementation and Installation State
 
-Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, workload-ACL, authenticated named-pipe, broker startup-composition, SCM lifecycle, service registration, create-new installer transaction, and bounded control-client response publication mechanisms exist, but installer CLI/runner composition, hosted finalization, and installed-host E2E are not complete.
+Windows x64 is a supported AWG v0.1 target. It uses native path, token, Job Object, protected-state, account/right, ACL, named-pipe, SCM service, runner, artifact, and private-control mechanisms; the complete boundary has inspected isolated-host E2E evidence.
 
 ## Installation input versus installed configuration
 
@@ -33,7 +33,7 @@ Non-dry-run installation is deliberately rejected until the account/rights/servi
 
 ## Account and logon-right transaction
 
-The create-new account transaction is implemented behind an elevated native boundary but is not yet enabled by the CLI. Both configured names must be absent before password generation. It generates independent mutable credentials, creates only normal local users, resolves their real SIDs, and binds those SIDs into installed configuration.
+The CLI invokes the create-new account transaction through an elevated native boundary. Both configured names must be absent before password generation. It generates independent mutable credentials, creates only normal local users, resolves their real SIDs, and binds those SIDs into installed configuration.
 
 Both accounts must have built-in Users as their only reported local-group membership. Their recorded token primary group is the distinct account-domain Users SID. Control receives service logon plus interactive/RDP deny rights. Execution receives batch logon plus interactive/RDP/service deny rights. The right strings and memberships are product policy, not installer input. [ADR 0008](adr/0008-windows-local-account-and-logon-right-provisioning.md) records the exact sets and create-new decision.
 
@@ -96,19 +96,21 @@ The Windows broker host now loads only exact protected state paths derived from 
 
 The mutating Windows installer is run from an elevated terminal with an authenticated GitHub CLI session. It accepts only pinned local release inputs, uses `gh auth token` through a bounded pipe rather than a command argument, and supports either creating a new initialized personal private repository or selecting an existing one:
 
+For v0.1, download `actions-runner-win-x64-2.337.0.zip` only from the official [`actions/runner` v2.337.0 release](https://github.com/actions/runner/releases/tag/v2.337.0). Before installation require an exact size of `103528051` bytes and SHA-256 `1150692afa94e71f872017e254ea55b6eece1eece3fe7e3a6d4c93d0a1b85cfc`. Verify the AWG archive and hosted control helper against the release's `SHA256SUMS` before elevation.
+
 ```powershell
-awg.exe install `
+.\awg.exe install `
   --spec .\windows-install.json `
   --repository alice/example-control `
   --create-repository `
-  --broker-image .\awg-broker-windows-amd64.exe `
-  --control-image .\awg-windows-amd64.exe `
+  --broker-image .\awg-broker.exe `
+  --control-image .\awg.exe `
   --runner-archive .\actions-runner-win-x64-2.337.0.zip `
-  --hosted-control-url https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/download/v0.1.0/awg-control-linux-amd64 `
-  --hosted-control-sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  --hosted-control-url https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/download/v0.1.0/awg-control_0.1.0_linux_amd64 `
+  --hosted-control-sha256 <digest-from-SHA256SUMS>
 ```
 
-Release builds embed the exact 40-hex public source SHA in both Windows executables. The installer rejects a broker or control executable that is not an AMD64 PE image containing that SHA, and independently enforces the fixed v0.1 GitHub runner version, exact archive byte count, and SHA-256. The digest above is synthetic documentation data; use the digest from the signed v0.1 release manifest.
+Release builds embed the exact 40-hex public source SHA in both Windows executables. The installer rejects a broker or control executable that is not an AMD64 PE image containing that SHA, and independently enforces the fixed v0.1 GitHub runner version, exact archive byte count, and SHA-256.
 
 The selected repository must be owned by the authenticated personal account, private, and have no other effective collaborator. v0.1 rejects organization repositories and shared personal repositories because their reader/requester boundary requires an explicit policy not yet represented by this command. There is no public-repository override.
 
@@ -125,10 +127,12 @@ Doctor reads only fixed protected files, validates both account identities and e
 Uninstall must be invoked from the matching release executable outside the protected installation root because Windows cannot remove the currently executing installed image:
 
 ```powershell
-.\awg-windows-amd64.exe uninstall --installation-root C:\ProgramData\AgentWorkstationGateway
+.\awg.exe uninstall --installation-root C:\ProgramData\AgentWorkstationGateway
 ```
 
 Uninstall preflights all protected local state and remote ownership before mutation. It stops both services, removes only the exact labeled repository runner and installer-created control files whose digests still match, deletes the fixed services, removes the protected runner/install roots and create-owned profile/temp roots, revokes only the installed execution SID from approved development roots, and finally deletes the two exact local accounts. It preserves the private repository, ledger, README, control files that predated installation, development files, and unrelated local paths. A changed or extra protected-root object fails closed instead of being recursively removed.
+
+For an upgrade, run `doctor`, uninstall with the matching old external release binary, verify the new release checksums, and install the new release with the same reviewed specification and private repository. The ledger and development files remain; execution is offline during the transition. Finish with `doctor` and one minimal request. See [ADR 0022](adr/0022-v0.1-release-and-upgrade.md).
 
 Before protected-state loading, the service requires an actual SCM process context and exact LocalSystem TokenUser. It reports bounded StartPending/Running/StopPending states and accepts only Stop/Shutdown. Shutdown cancels execution, closes the listener and any active connection to interrupt IPC, and waits for the owned sequential loop. Only closed peer/session failures continue to another accept; listener infrastructure and handle-close failures terminate the service. See [ADR 0015](adr/0015-windows-scm-broker-service.md).
 
@@ -144,8 +148,6 @@ The native service-registration boundary now accepts only the canonical installa
 
 Creation is staged disabled. SCM supplies the LocalSystem owner/group; the installer applies only the exact protected DACL granting full service access to LocalSystem and Builtin Administrators, then independently verifies owner, group, and DACL. Recovery permits restarts after 5 and 30 seconds followed by no action, has no command or reboot behavior, and resets after 24 hours. Automatic start is applied last, then configuration, recovery, and descriptor state are queried independently. An uncommitted lease deletes only a service positively created by that lease. See [ADR 0016](adr/0016-windows-broker-service-registration.md).
 
-This boundary is not yet wired into a complete installer and does not start the service. Repair, update, and uninstall orchestration remain separate work.
-
 ## Create-new installer transaction
 
 The Windows composite installer now pins a strict specification, canonical source SHA, and trusted bounded PE32+ AMD64 broker image before mutation. The image must contain the build-embedded exact SHA and cannot be a DLL. This does not authenticate downloaded bytes: release/bootstrap code must still verify published artifact provenance before invoking the transaction.
@@ -153,8 +155,6 @@ The Windows composite installer now pins a strict specification, canonical sourc
 The fixed sequence performs a read-only service collision query, creates accounts and binds their SIDs, converges workload filesystem leases, creates a new protected root/image/state, clears the execution password after DPAPI materialization, and finally registers the verified service. No spec/request field chooses the broker destination, protected state paths, service policy, account rights, or stage order.
 
 One uncommitted lease owns reverse cleanup: service, exact known protected files and empty directories, filesystem changes, then accounts. It refuses to adopt an existing installation root and never recursively deletes unknown content. A temporary copy provides the control password only to a later synchronous trusted runner-service consumer and is cleared on return. The account-owned original remains until the larger setup commits or rolls back. See [ADR 0017](adr/0017-windows-create-new-installer-transaction.md).
-
-The transaction is not exposed by `awg install` yet. It does not install a runner, select a private repository, start the broker, implement repair/update/uninstall, or constitute elevated-host evidence.
 
 ## Bounded artifact collection
 
@@ -168,6 +168,6 @@ The platform-neutral response layer now streams those exact handles in manifest 
 
 ## Evidence limits
 
-Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, exact protected-state descriptor/single-link/stability policy, ordinary protected-file denial, DPAPI mechanism behavior, real-dependency broker startup composition through injected protected-state/listener seams, SCM state/retry/stop ownership through an injected runtime, fixed service-registration policy/drift/rollback through synthetic and injected dependencies, create-new installer ordering/receipt/credential/rollback through injected dependencies, an actual built broker image policy check, a read-only native fixed-service query, native interactive-context and non-LocalSystem TokenUser denial, real temporary-directory workload-ACL convergence/rollback, real local named-pipe descriptor/authentication/framing behavior, current-token artifact collection/handle stability/hard-link/quota behavior, platform-neutral response framing/digest/transaction cleanup behavior, create-new response staging/alias/reparse/collision cleanup, and current-peer authenticated session-to-published-directory composition with fake execution internals.
+The v0.1 Windows acceptance matrix exercised elevated create-new installation, real dedicated accounts/SIDs and logon rights, protected state and runner credentials, SCM services and DACLs, LocalSystem-to-execution-token launch, named-pipe authentication, approved/denied filesystem access, environment and credential denial, foreground/background execution, timeout/stop process-tree cleanup, output/artifacts, private hosted transport, doctor, uninstall, ACL restoration, and reinstall on an isolated Windows x64 host. Public CI separately runs Windows-native tests and cgo-free builds.
 
-They do not prove successful elevated protected-root convergence, account creation, effective logon-right assignment, service registration/descriptor/recovery mutation, composite native installation, LocalSystem service behavior, or effective installed execution-account access/denial. The service probe is read-only and makes no registration claim. The pipe/client test treats the current process as the synthetic control SID; it does not prove installed control success, installed execution/unrelated-user denial, non-control administrator rejection, remote-host rejection, runner-parent protection, or GitHub upload. Artifact tests likewise use the current token and do not prove allowed/denied reads by installed execution identity; local reparse tests can skip without symbolic-link privilege. The workload-ACL tests use a nonexistent synthetic SID under fresh temporary directories and restore/remove their own state. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA/service/composite and installed-token evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.
+This evidence is specific to the inspected host and release commit. It does not make AWG a malware sandbox, prove every Windows policy/domain configuration, or replace operator review of approved roots and optional tools. Cross-compilation alone remains build evidence only.

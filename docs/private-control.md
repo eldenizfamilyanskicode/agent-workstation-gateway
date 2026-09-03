@@ -14,6 +14,8 @@ The inert source template is stored under `templates/control-repository`. GitHub
 
 The accepted/result ledger is authoritative. An issue body, Actions log, or temporary artifact is not. Reusing a request ID causes the create-once publication to fail before workstation execution; it does not authorize a second attempt.
 
+An authorized agent reads `ledger/requests/<request-id>/result.json`, then uses the recorded workflow run ID and attempt to retrieve the bounded response artifact when it needs stdout, stderr, or returned files. Agent-specific least-privilege guidance and reusable instructions are in [agent integration](agents.md).
+
 The hosted `awg-control` process consumes `GITHUB_TOKEN` from its environment and removes the variable before use. It reports only closed error categories and never prints the token, issue body, request script, repository response, or local input paths. The workstation job has `permissions: {}` and does not run the hosted publication helper.
 
 The default requester authority remains one private repository with `Issues: write` and `Contents: read`. Every effective reader of the dedicated repository is request-authorized because GitHub permits readers to create issues. Bootstrap and doctor therefore treat unexpected readers and non-private visibility as failures, not warnings.

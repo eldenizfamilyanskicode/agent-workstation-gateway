@@ -1,6 +1,6 @@
 # ADR 0003 — Go Runtime and Cross-Platform Packaging
 
-- Status: Accepted
+- Status: Accepted; v0.1 artifact matrix superseded in part by ADR 0022
 - Date: 2026-09-02
 - Scope: implementation language, executable layout, platform-specific native integration, and distribution model
 

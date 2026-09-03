@@ -1,181 +1,107 @@
 # Agent Workstation Gateway
 
-> **Pre-alpha:** the threat model, architecture decisions, public repository safety tooling, hosted CI, protocol v1 records, and shared execution orchestration exist. Native security boundaries, installers, private-control bootstrap, and real-host E2E implementation are still being built. Do not treat this repository as production-ready or installable yet.
+Agent Workstation Gateway (AWG) lets a **trusted AI or development agent** request bounded work on a user's workstation without placing the public source repository in the workstation authority path.
 
-Agent Workstation Gateway (AWG) is a vendor-neutral gateway for letting a **trusted AI/development agent** request bounded work on a user's workstation while keeping public source code separate from workstation execution authority.
+AWG v0.1 is security-sensitive infrastructure for trusted development workloads. It is not a malware sandbox, a remote desktop, or a safe way to execute arbitrary untrusted internet code.
 
-The project targets Windows and Linux and is designed around explicit OS identities, explicit development roots, private remote authority, and a narrow privileged broker.
-
-## What AWG is
-
-AWG is intended to provide a reproducible path from a trusted remote agent to local development tools without requiring an inbound workstation port or giving a public GitHub repository control of the machine.
-
-The planned v0.1 authority path is:
+## Authority model
 
 ```text
-trusted AI / development agent
-            |
-            | bounded request
-            v
-PRIVATE GitHub control repository
-            |
-            | fixed trusted control workflow
-            v
-installed AWG control component
-            |
-            v
-narrow privileged local broker
-            |
-            | OS identity transition + policy
-            v
+trusted agent
+     |
+     | strict request
+     v
+user-owned PRIVATE GitHub control repository
+     |
+     | fixed workflow + dedicated control identity
+     v
+narrow privileged broker
+     |
+     | fixed OS identity transition + policy
+     v
 restricted execution identity
-            |
-            v
-explicitly allowed development roots
+     |
+     v
+explicitly approved development roots
 ```
 
-The public source repository is **not** in that authority chain. It contains source, documentation, schemas, tests, installers, and safe disposable CI as those pieces are implemented. A workstation installation uses a separate private control repository owned by that user.
+The public repository contains source, schemas, documentation, tests, and disposable hosted CI. It is never the control repository for a persistent workstation runner.
 
-## What AWG is not
+## Security boundaries
 
-- It is not an LLM, agent framework, or model provider.
-- It is not a general remote desktop or SSH replacement.
-- It is not a malware sandbox.
-- It does not make arbitrary untrusted internet code safe to execute.
-- A public fork or pull request must never gain an execution route to a maintainer's persistent workstation.
+- Active public workflows use only GitHub-hosted runners and read-only repository permissions.
+- Installation requires a dedicated personal private control repository. Public, organization-owned, shared, or unexpectedly readable repositories fail closed in v0.1.
+- Trusted control and arbitrary workload execution use separate local OS identities.
+- Runner credentials, human GitHub credentials, protected gateway state, and unrelated files are unavailable to the execution identity by design and by native negative checks.
+- The broker accepts only the closed execution protocol. It is not a generic root/SYSTEM shell, filesystem proxy, updater, or repository client.
+- Workloads are confined to administrator-selected roots and are reaped as a native process tree on completion, timeout, stop, or broker shutdown.
+- Docker and other host-powerful capabilities are not granted by the base installation.
 
-The remote requester is trusted to request workloads within the local authority explicitly granted to AWG. The security goal is to keep that workload authority narrower than gateway administration, operating-system administration, human credentials, and unrelated local data.
+Read the [threat model](docs/threat-model.md), [architecture](docs/architecture.md), and [ADRs](docs/adr/) before changing a boundary.
 
-## Why a private control repository
+## Supported hosts
 
-A command request is executable authority over the configured workstation scope. For that reason, AWG's design requires a dedicated **private** control repository for normal workstation operation.
+The v0.1 supported installation targets are:
 
-The current transport decision uses a bounded GitHub issue request in that private repository, a control-owned accepted-request ledger, a restricted self-hosted execution step, and a hosted finalization step. Requester authority is intentionally narrower than workflow, runner, repository-management, and workstation-management authority.
+- Windows x64 with dedicated non-administrator accounts and Windows services;
+- Linux x64 with systemd, procfs, and POSIX ACL tools, including WSL2 distributions booted with systemd.
 
-Foreground commands and explicit session-owned `start`/`status`/`logs`/`stop` process operations share the same restricted identity and approved-root boundary. Background work is bounded, broker-owned, and reaped on timeout, stop, or broker shutdown; shell detachment is not a persistence mechanism.
+The Windows boundary has been exercised on an isolated native Windows host. The Linux boundary has been exercised under dedicated identities and systemd on WSL2 Ubuntu; Ubuntu, Debian, and Fedora container checks cover package names, shell assumptions, static binaries, installer planning, and ACL behavior. WSL2 and containers are not a claim of complete bare-metal coverage.
 
-The bootstrap implementation will hard-fail if a selected control repository is public. The initial release will not provide an unsafe override.
+## Install
 
-The implemented hosted accept/finalize boundary and inert workflow template are described in [`docs/private-control.md`](docs/private-control.md). The template belongs outside this source repository's active `.github/workflows` directory.
+1. Download the platform archive, `awg-control_0.1.0_linux_amd64`, and `SHA256SUMS` from the [latest release](https://github.com/eldenizfamilyanskicode/agent-workstation-gateway/releases/latest). Verify every downloaded AWG asset against `SHA256SUMS` before elevation.
+2. Download the exact official GitHub Actions runner package pinned in the platform guide and verify its documented size and SHA-256.
+3. Authenticate the GitHub CLI as the personal account that will own the dedicated control repository: `gh auth login`.
+4. Copy the platform install specification from `config/examples/v1`, choose two new synthetic/local account names, and list only intended development roots.
+5. Run `awg install --dry-run --spec <path>` and inspect the complete mutation plan.
+6. Run the mutating install command from an elevated Windows terminal or a root Linux shell. Use `--create-repository` to create a new dedicated private repository, or name an existing empty/private one that satisfies the exclusive-reader checks.
+7. Run `awg doctor --installation-root <path>` and require every reported boundary boolean to be `true`.
 
-## Security model
+Exact commands and pinned runner values are in the [Windows guide](docs/windows.md) and [Linux guide](docs/linux.md). The installer never accepts an unsafe public-repository override.
 
-The current design requires these boundaries:
+## Send work from an agent
 
-- public source has no persistent workstation runner;
-- active public CI uses only disposable hosted infrastructure;
-- trusted control and arbitrary workload execution use separate OS identities;
-- gateway management credentials stay outside the workload environment;
-- the privileged broker exposes only a bounded execution protocol, not a generic root/SYSTEM shell;
-- local execution is restricted to explicitly configured development roots;
-- Docker and other high-authority local capabilities are opt-in;
-- Windows and Linux security behavior must be implemented and verified using native platform mechanisms before release.
+An authorized agent creates a GitHub issue containing one strict protocol-v1 request in the dedicated private control repository, then reads the authoritative ledger result. It does not need workstation administration, runner credentials, or access to protected gateway state.
 
-See [`docs/threat-model.md`](docs/threat-model.md) and the accepted decisions in [`docs/adr/`](docs/adr/) for the detailed authority and credential model.
+See [agent integration](docs/agents.md) for ChatGPT, Codex, Claude Code, generic GitHub-capable agents, and concise custom-instruction examples. See [protocol v1](docs/protocol-v1.md) for the exact request/result contract and [private control](docs/private-control.md) for transport semantics.
 
-## Public repository safety
+## Diagnose, update, and remove
 
-This public repository is designed to remain safe to inspect, fork, and contribute to without connecting contributor-controlled code to a maintainer workstation.
+- `awg version` prints the release version and embedded source commit.
+- `awg doctor --installation-root <path>` validates installed state and remote control ownership without exposing credential contents.
+- v0.1 upgrades use a fail-closed uninstall/reinstall: run `doctor`, use the matching old external release binary to uninstall, verify the new release checksums, then install the new release with the same reviewed specification and private repository. The private repository, ledger, approved-root contents, and unrelated files are preserved; execution is unavailable during the transition.
+- `awg uninstall --installation-root <path>` removes only verified installer-owned services, identities, ACL grants, control files, and local roots. Drift causes a closed failure instead of broad deletion.
 
-Active public workflows may not target `self-hosted` runners. Real hardware smoke testing, when implemented, is initiated by a separate trusted private smoke control plane against an explicitly selected public commit SHA and a synthetic workspace.
+There is no in-place self-updater or request-driven management operation in v0.1.
 
-Public examples use synthetic identities and paths only. See [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`AGENTS.md`](AGENTS.md).
+## Build and verify
 
-Before publication, contributors can run the project safety gate described in [docs/public-safety.md](docs/public-safety.md). It scans current/staged Git state and reachable history without connecting to a workstation control plane. The active public CI runs the same full-history gate, formatting, vet, tests, and builds on disposable GitHub-hosted Windows and Linux runners.
-
-## Implementation direction
-
-Security-critical product code is written in Go and packaged as self-contained native binaries where practical. The conceptual executable split is:
+Go is a build dependency only; installed binaries are cgo-free and require no Go, Python, Node.js, Docker, or model runtime.
 
 ```text
-awg          user-facing management CLI
-awg-control  trusted non-privileged private-control helper
-awg-broker   narrow privileged local service
+gofmt -l .
+go mod verify
+go vet ./...
+go test ./...
+go test -race ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+go run ./cmd/awg-public-safety -scope all
 ```
 
-PowerShell and POSIX shell are limited to thin bootstrap/automation responsibilities. Normal AWG operation must not require Python, Node.js, Docker, Ollama, or another language runtime merely to run the gateway.
+Platform-specific security claims additionally require the native checks described in [CONTRIBUTING.md](CONTRIBUTING.md). Release construction and verification are documented in [docs/releasing.md](docs/releasing.md).
 
-Initial implementation targets are:
+## Project layout
 
-- Windows x64;
-- Linux x64;
-- Linux arm64.
-
-Support claims will follow real verification rather than compiler target availability.
-
-## Current project status
-
-Completed foundation work:
-
-- reference-runtime audit;
-- threat model;
-- control/execution identity and credential-boundary ADR;
-- private-control GitHub transport ADR;
-- Go runtime/packaging ADR;
-- Apache-2.0 license decision;
-- public security, contribution, and agent-development policies;
-- local public/workflow safety scanner with reachable-history checks;
-- hosted-only public CI verified on GitHub's Windows and Linux runner pools;
-- strict protocol v1 request schema, Go codec/validation, canonicalization, and digest;
-- strict protocol v1 accepted-request, non-authoritative execution-report, and authoritative-result schemas with provenance/binding validation and independent command/artifact outcomes;
-- shared strict installation configuration, execute-only broker envelope, clean-environment builder, and fail-closed launch-policy core;
-- closed shell startup plans that carry arbitrary script content only as stdin data;
-- concurrent full-stream output hashing/counting with bounded retained prefixes;
-- shared command lifecycle and report assembly behind mandatory native process-owner and restricted artifact-collector interfaces.
-- Windows create-new installation transaction with pinned broker/control/runner images, private personal control-repository bootstrap, fixed runner registration/service installation, and fixed service startup.
-- Windows handle-based working-directory resolution with final-path/link-escape rejection (without ACL or process-launch claims).
-- Windows mandatory-token `CreateProcessAsUserW` and Job Object process-tree implementation (without installed-account/service E2E claims).
-- Windows machine-protected credential file and fixed-account batch-logon/profile token source (without installer-created-account success claims).
-- strict Windows install specification, mutation-free `awg install --dry-run`, and native protected broker-state materializer (not yet wired to mutating account/service installation).
-- create-new Windows control/execution account transaction with crypto-random credentials, Users-only policy, fixed LSA logon rights, SID binding, and owned rollback (mutating path reserved for isolated elevated verification).
-- rollback-capable Windows approved-root/profile/temp ACL convergence with same-handle validation and exact restricted execution rights (installed-account effective access reserved for isolated verification).
-- fixed Windows named-pipe transport with first-instance/local-only policy, exact protected DACL verification, bounded framing, and exact impersonated control-SID authentication (installed-account and remote-host evidence reserved for isolated verification).
-- Windows artifact collection under exact execution-token impersonation with portable bounded globs, link/final-path enforcement, stable content handles, and explicit omissions (broker upload and installed-token evidence remain).
-- strict one-exchange broker response streaming with canonical reports, bounded retained output, stable artifact-handle chunks, end-to-end length/digest checks, and transactional receiver cleanup (hosted upload remains).
-- one-request broker session orchestration with immutable installed policy, authorize-before-run ordering, coarse failures, fixed I/O deadlines, report rebinding, and authenticated Windows pipe integration using fake execution internals (installed-identity evidence remains).
-- Windows broker startup composition from exact protected fixed state, native-only system-directory facts, execution-authority separation, real launcher/collector/session dependencies, and owned one-connection lifecycle (installed-identity E2E remains).
-- service-only Windows `awg-broker` executable with exact LocalSystem/SCM gates, deterministic stop/shutdown ownership, and a closed per-connection retry policy (installed-host E2E remains).
-- fixed create-new Windows broker-service registration with minimal SCM rights, disabled security-first staging, exact LocalSystem/Administrators service ACL, bounded recovery, independent verification, and create-owned rollback (elevated isolated-host evidence remains).
-- create-new Windows installer transaction composing account/SID, workload ACL, protected root/image/state, execution-secret clearing, and fixed service leases under reverse rollback (not yet exposed by the CLI or elevated-smoke verified).
-- bounded Windows `awg execute-local` control client with exact envelope/report/attempt binding and create-new atomic response-directory publication (installed identity, runner, and hosted finalization evidence remain).
-- rollback-safe Windows GitHub runner installation transaction with an exact official release pin, protected control-only storage, direct bounded no-shell registration, independent removal-token cleanup, and a fixed control-account SCM service (real registration/start remains isolated-host evidence).
-
-The Windows installer, broker, private-control workflow, background lifecycle, doctor, uninstall, and isolated real-host matrix are implemented and have passed their exact-commit acceptance run. The Linux implementation now includes systemd installation, dedicated identities, POSIX ACL setup/restoration, authenticated Unix IPC, restricted process groups, execution-authority artifacts, control responses, doctor, and uninstall. Native Linux container tests cover the low-level security mechanisms; installed WSL2/systemd and cross-distribution acceptance remain release blockers at this checkpoint.
-
-Operational Linux details are in [`docs/linux.md`](docs/linux.md), and Windows details are in [`docs/windows.md`](docs/windows.md). Release hardening and agent-integration documentation remain before v0.1.
-
-The implemented protocol v1 contracts are documented in [`docs/protocol-v1.md`](docs/protocol-v1.md).
-
-The implemented shared policy boundary and its explicit native gaps are documented in [`docs/architecture.md`](docs/architecture.md).
-
-## Architecture decisions
-
-- [`ADR 0001 — Control/Execution Identity and Credentials`](docs/adr/0001-control-execution-identity-and-credentials.md)
-- [`ADR 0002 — Private Control Repository and GitHub Transport`](docs/adr/0002-private-control-repository-and-github-transport.md)
-- [`ADR 0003 — Go Runtime and Packaging`](docs/adr/0003-go-runtime-and-packaging.md)
-- [`ADR 0004 — Apache License 2.0`](docs/adr/0004-apache-2.0-license.md)
-- [`ADR 0005 — Windows Native Path Resolution`](docs/adr/0005-windows-native-path-resolution.md)
-- [`ADR 0006 — Windows Restricted Process and Job Boundary`](docs/adr/0006-windows-restricted-process-and-job-boundary.md)
-- [`ADR 0007 — Windows Protected Batch Token Source`](docs/adr/0007-windows-protected-batch-token-source.md)
-- [`ADR 0008 — Windows Local Account and Logon-Right Provisioning`](docs/adr/0008-windows-local-account-and-logon-right-provisioning.md)
-- [`ADR 0009 — Windows Workload Filesystem ACLs`](docs/adr/0009-windows-workload-filesystem-acls.md)
-- [`ADR 0010 — Windows Authenticated Named-Pipe IPC`](docs/adr/0010-windows-authenticated-named-pipe.md)
-- [`ADR 0011 — Windows Artifacts Under Execution Authority`](docs/adr/0011-windows-execution-authority-artifacts.md)
-- [`ADR 0012 — Bounded Local Broker Response Stream`](docs/adr/0012-bounded-local-broker-response-stream.md)
-- [`ADR 0013 — Bounded Broker Session Orchestration`](docs/adr/0013-bounded-broker-session-orchestration.md)
-- [`ADR 0014 — Windows Broker Startup Composition`](docs/adr/0014-windows-broker-startup-composition.md)
-- [`ADR 0015 — Windows SCM Broker Service Lifecycle`](docs/adr/0015-windows-scm-broker-service.md)
-- [`ADR 0016 — Windows Broker Service Registration`](docs/adr/0016-windows-broker-service-registration.md)
-- [`ADR 0017 — Windows Create-New Installer Transaction`](docs/adr/0017-windows-create-new-installer-transaction.md)
-- [`ADR 0018 — Windows Control Client Response Publication`](docs/adr/0018-windows-control-client-response-publication.md)
-- [`ADR 0019 — Windows GitHub Runner Installation`](docs/adr/0019-windows-github-runner-installation.md)
-- [`ADR 0020 — Bounded Background Process Lifecycle`](docs/adr/0020-bounded-background-process-lifecycle.md)
-- [`ADR 0021 — Linux systemd, UID, and Unix-Socket Boundary`](docs/adr/0021-linux-systemd-uid-and-unix-socket-boundary.md)
+- `cmd/awg` — management and installed control CLI;
+- `cmd/awg-control` — hosted private-control accept/finalize helper;
+- `cmd/awg-broker` — narrow privileged service;
+- `protocol/` and `runtime/` — strict public records and local broker contracts;
+- `templates/control-repository/` — inert private workflow template, never active in this repository;
+- `internal/platform/windows` and `internal/platform/linux` — native security boundaries.
 
 ## Contributing and security
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting changes. Security reports should follow [`SECURITY.md`](SECURITY.md) and should never publish real credentials or sensitive workstation data merely to demonstrate impact.
-
-## License
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Report vulnerabilities through the private process in [SECURITY.md](SECURITY.md); never publish real credentials or sensitive workstation data as evidence.
 
 Licensed under the [Apache License 2.0](LICENSE).

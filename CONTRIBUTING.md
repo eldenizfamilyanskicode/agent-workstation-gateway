@@ -1,6 +1,6 @@
 # Contributing
 
-Agent Workstation Gateway is pre-release security-sensitive infrastructure. Contributions are welcome when they preserve the repository's public/private authority boundary and are scoped so they can be reviewed carefully.
+Agent Workstation Gateway is security-sensitive infrastructure. Contributions are welcome when they preserve the repository's public/private authority boundary and are scoped so they can be reviewed carefully.
 
 ## Before you change code
 
