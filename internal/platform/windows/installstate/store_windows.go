@@ -42,83 +42,167 @@ func (DPAPISealer) Seal(password []byte) ([]byte, error) {
 }
 
 func (NativeStore) EnsureProtectedDirectory(path string) error {
+	_, err := createProtectedDirectory(path, false)
+	return err
+}
+
+// CreateNewProtectedDirectory creates and verifies one protected directory
+// without adopting or modifying an existing object. The created result stays
+// true when creation succeeded but a later apply/verification step failed.
+func (NativeStore) CreateNewProtectedDirectory(path string) (bool, error) {
+	return createProtectedDirectory(path, true)
+}
+
+func createProtectedDirectory(path string, createNewOnly bool) (created bool, resultErr error) {
 	if err := validatePath(path); err != nil {
-		return err
+		return false, err
 	}
 	descriptor, err := windows.SecurityDescriptorFromString(protectedstate.DirectorySDDL)
 	if err != nil {
-		return storeError("directory-descriptor-invalid")
+		return false, storeError("directory-descriptor-invalid")
 	}
 	pathPointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
-		return storeError("directory-path-invalid")
+		return false, storeError("directory-path-invalid")
 	}
 	attributes := windows.SecurityAttributes{
 		Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: descriptor,
 	}
-	if err := windows.CreateDirectory(pathPointer, &attributes); err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
-		return storeError("directory-create-failed")
+	if err := windows.CreateDirectory(pathPointer, &attributes); err != nil {
+		if !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			return false, storeError("directory-create-failed")
+		}
+		if createNewOnly {
+			return false, storeError("directory-already-exists")
+		}
+	} else {
+		created = true
 	}
 	handle, err := openDirectory(path, windows.READ_CONTROL|windows.WRITE_DAC|windows.WRITE_OWNER|windows.FILE_READ_ATTRIBUTES)
 	if err != nil {
-		return err
+		return created, err
 	}
 	defer windows.CloseHandle(handle)
 	if err := applySecurityDescriptor(handle, descriptor); err != nil {
-		return err
+		return created, err
 	}
 	actual, err := windows.GetSecurityInfo(
 		handle, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION,
 	)
 	if err != nil || protectedstate.ValidateExactDirectoryDescriptor(actual) != nil {
-		return storeError("directory-acl-verification-failed")
+		return created, storeError("directory-acl-verification-failed")
+	}
+	return created, nil
+}
+
+func (NativeStore) WriteProtectedFile(path string, content []byte) error {
+	_, err := writeProtectedFile(path, content, maxProtectedStateFileBytes, true, false)
+	return err
+}
+
+// WriteNewProtectedFile atomically creates one protected state file without
+// replacing an existing target.
+func (NativeStore) WriteNewProtectedFile(path string, content []byte) (bool, error) {
+	return writeProtectedFile(path, content, maxProtectedStateFileBytes, false, false)
+}
+
+// WriteNewProtectedExecutable atomically creates one protected executable
+// without replacing an existing target.
+func (NativeStore) WriteNewProtectedExecutable(path string, content []byte) (bool, error) {
+	return writeProtectedFile(path, content, protectedstate.MaxProtectedExecutableBytes, false, true)
+}
+
+func (NativeStore) VerifyProtectedDirectory(path string) error {
+	return validateProtectedDirectory(path)
+}
+
+func (NativeStore) RemoveProtectedStateFile(path string) error {
+	return removeProtectedFile(path, maxProtectedStateFileBytes, false)
+}
+
+func (NativeStore) RemoveProtectedExecutable(path string) error {
+	return removeProtectedFile(path, protectedstate.MaxProtectedExecutableBytes, true)
+}
+
+func (NativeStore) RemoveProtectedDirectory(path string) error {
+	pointer, exists, err := existingPath(path)
+	if err != nil || !exists {
+		return err
+	}
+	if err := validateProtectedDirectory(path); err != nil {
+		return err
+	}
+	if err := windows.RemoveDirectory(pointer); err != nil {
+		return storeError("directory-remove-failed")
 	}
 	return nil
 }
 
-func (NativeStore) WriteProtectedFile(path string, content []byte) error {
+func writeProtectedFile(
+	path string,
+	content []byte,
+	maximumBytes int,
+	replace bool,
+	executable bool,
+) (created bool, resultErr error) {
 	if err := validatePath(path); err != nil {
-		return err
+		return false, err
 	}
-	if len(content) == 0 || len(content) > maxProtectedStateFileBytes {
-		return storeError("file-content-invalid")
+	if len(content) == 0 || len(content) > maximumBytes {
+		return false, storeError("file-content-invalid")
 	}
 	parent := filepath.Dir(path)
 	if parent == path || !platformpath.Contains(platformpath.Windows, parent, path) {
-		return storeError("file-parent-invalid")
+		return false, storeError("file-parent-invalid")
 	}
 	if err := validateProtectedDirectory(parent); err != nil {
-		return err
+		return false, err
 	}
-	if err := validateReplaceTarget(path); err != nil {
-		return err
+	if replace {
+		if err := validateReplaceTarget(path); err != nil {
+			return false, err
+		}
+	} else if err := validateAbsentTarget(path); err != nil {
+		return false, err
 	}
 	temporary, err := temporaryPath(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	temporaryPointer, err := windows.UTF16PtrFromString(temporary)
 	if err != nil {
-		return storeError("temporary-path-invalid")
+		return false, storeError("temporary-path-invalid")
 	}
 	defer windows.DeleteFile(temporaryPointer)
 	if err := createProtectedFile(temporaryPointer, content); err != nil {
-		return err
+		return false, err
 	}
 	targetPointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
-		return storeError("file-path-invalid")
+		return false, storeError("file-path-invalid")
+	}
+	flags := uint32(windows.MOVEFILE_WRITE_THROUGH)
+	if replace {
+		flags |= windows.MOVEFILE_REPLACE_EXISTING
 	}
 	if err := windows.MoveFileEx(
-		temporaryPointer, targetPointer, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH,
+		temporaryPointer, targetPointer, flags,
 	); err != nil {
-		return storeError("file-commit-failed")
+		return false, storeError("file-commit-failed")
 	}
+	created = !replace
 	if err := validateProtectedFile(path, uint64(len(content))); err != nil {
-		return err
+		return created, err
 	}
-	return nil
+	if executable {
+		if err := protectedstate.ValidateExactExecutable(path, maximumBytes); err != nil {
+			return created, storeError("executable-verification-failed")
+		}
+	} else if err := protectedstate.ValidateExactFile(path, maximumBytes); err != nil {
+		return created, storeError("file-exact-verification-failed")
+	}
+	return created, nil
 }
 
 func createProtectedFile(path *uint16, content []byte) error {
@@ -209,6 +293,58 @@ func validateReplaceTarget(path string) error {
 		return nil
 	}
 	return err
+}
+
+func validateAbsentTarget(path string) error {
+	handle, _, err := openFile(path)
+	if err == nil {
+		if closeErr := windows.CloseHandle(handle); closeErr != nil {
+			return storeError("create-target-close-failed")
+		}
+		return storeError("create-target-already-exists")
+	}
+	var failure *Error
+	if errors.As(err, &failure) && failure.Rule == "file-not-found" {
+		return nil
+	}
+	return err
+}
+
+func removeProtectedFile(path string, maximumBytes int, executable bool) error {
+	pointer, exists, err := existingPath(path)
+	if err != nil || !exists {
+		return err
+	}
+	if executable {
+		err = protectedstate.ValidateExactExecutable(path, maximumBytes)
+	} else {
+		err = protectedstate.ValidateExactFile(path, maximumBytes)
+	}
+	if err != nil {
+		return storeError("remove-target-not-exact")
+	}
+	if err := windows.DeleteFile(pointer); err != nil {
+		return storeError("file-remove-failed")
+	}
+	return nil
+}
+
+func existingPath(path string) (*uint16, bool, error) {
+	if err := validatePath(path); err != nil {
+		return nil, false, err
+	}
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, false, storeError("path-invalid")
+	}
+	_, err = windows.GetFileAttributes(pointer)
+	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
+		return pointer, false, nil
+	}
+	if err != nil {
+		return nil, false, storeError("path-query-failed")
+	}
+	return pointer, true, nil
 }
 
 func openDirectory(path string, access uint32) (windows.Handle, error) {
