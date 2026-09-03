@@ -140,7 +140,7 @@ This does not install or start the service.
 
 The native service-registration boundary now accepts only the canonical installation root. It derives the fixed protected broker path and exact argument, requests only SCM connect/create rights, and checks a possible pre-existing fixed service with query-only access. A collision fails closed without adoption or deletion.
 
-Creation is staged disabled. The exact protected LocalSystem-owner/group DACL grants full service access only to LocalSystem and Builtin Administrators and is applied before recovery configuration. Recovery permits restarts after 5 and 30 seconds followed by no action, has no command or reboot behavior, and resets after 24 hours. Automatic start is applied last, then configuration, recovery, and descriptor state are queried independently. An uncommitted lease deletes only a service positively created by that lease. See [ADR 0016](adr/0016-windows-broker-service-registration.md).
+Creation is staged disabled. SCM supplies the LocalSystem owner/group; the installer applies only the exact protected DACL granting full service access to LocalSystem and Builtin Administrators, then independently verifies owner, group, and DACL. Recovery permits restarts after 5 and 30 seconds followed by no action, has no command or reboot behavior, and resets after 24 hours. Automatic start is applied last, then configuration, recovery, and descriptor state are queried independently. An uncommitted lease deletes only a service positively created by that lease. See [ADR 0016](adr/0016-windows-broker-service-registration.md).
 
 This boundary is not yet wired into a complete installer and does not start the service. Repair, update, and uninstall orchestration remain separate work.
 

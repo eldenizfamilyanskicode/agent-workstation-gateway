@@ -225,7 +225,7 @@ func setServiceSecurity(handle windows.Handle, sddl string) error {
 	}
 	result, _, callErr := setServiceObjectSecurityProcedure.Call(
 		uintptr(handle),
-		uintptr(windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION),
+		uintptr(windows.DACL_SECURITY_INFORMATION),
 		uintptr(unsafe.Pointer(descriptor)),
 	)
 	runtime.KeepAlive(descriptor)
