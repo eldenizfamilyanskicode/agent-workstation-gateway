@@ -12,7 +12,10 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 )
 
-const MaxProtectedFileBytes = 1024 * 1024
+const (
+	MaxProtectedFileBytes       = 1024 * 1024
+	MaxProtectedExecutableBytes = 256 * 1024 * 1024
+)
 
 type fileSnapshot struct {
 	attributes   uint32
@@ -27,7 +30,20 @@ type fileSnapshot struct {
 }
 
 func ValidateExactFile(path string, maximumBytes int) error {
-	handle, _, err := openExactFile(path, maximumBytes, false)
+	handle, _, err := openExactFile(path, maximumBytes, MaxProtectedFileBytes, false)
+	if err != nil {
+		return err
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		return fileError("file-close-failed")
+	}
+	return nil
+}
+
+// ValidateExactExecutable validates a protected executable without weakening
+// the substantially smaller ceiling used when protected state is read.
+func ValidateExactExecutable(path string, maximumBytes int) error {
+	handle, _, err := openExactFile(path, maximumBytes, MaxProtectedExecutableBytes, false)
 	if err != nil {
 		return err
 	}
@@ -38,7 +54,7 @@ func ValidateExactFile(path string, maximumBytes int) error {
 }
 
 func ReadExactFile(path string, maximumBytes int) (content []byte, resultErr error) {
-	handle, before, err := openExactFile(path, maximumBytes, true)
+	handle, before, err := openExactFile(path, maximumBytes, MaxProtectedFileBytes, true)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +83,8 @@ func ReadExactFile(path string, maximumBytes int) (content []byte, resultErr err
 	return content, nil
 }
 
-func openExactFile(path string, maximumBytes int, read bool) (windows.Handle, fileSnapshot, error) {
-	if maximumBytes <= 0 || maximumBytes > MaxProtectedFileBytes ||
+func openExactFile(path string, maximumBytes int, policyMaximum int, read bool) (windows.Handle, fileSnapshot, error) {
+	if maximumBytes <= 0 || maximumBytes > policyMaximum ||
 		platformpath.ValidateAbsolute(platformpath.Windows, path) != nil ||
 		platformpath.IsFilesystemRoot(platformpath.Windows, path) {
 		return 0, fileSnapshot{}, fileError("file-policy-invalid")

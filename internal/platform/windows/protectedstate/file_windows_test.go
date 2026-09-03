@@ -27,6 +27,17 @@ func TestExactFileRejectsInvalidPolicyBeforeOpening(t *testing.T) {
 	}
 }
 
+func TestExactExecutableHasAnIndependentBoundedPolicy(t *testing.T) {
+	path := `C:\ProgramData\AWG\bin\awg-broker.exe`
+	assertFileRule(t, ValidateExactExecutable(path, 0), "file-policy-invalid")
+	assertFileRule(t, ValidateExactExecutable(path, MaxProtectedExecutableBytes+1), "file-policy-invalid")
+	assertFileRule(t, ValidateExactFile(path, MaxProtectedFileBytes+1), "file-policy-invalid")
+
+	// A maximum valid only for executables reaches the native open boundary;
+	// it is not rejected as a state-file policy and no fixture is created.
+	assertFileRule(t, ValidateExactExecutable(path, MaxProtectedFileBytes+1), "file-open-failed")
+}
+
 func TestExactFileRejectsEmptyAndOversizedFilesBeforeACLValidation(t *testing.T) {
 	directory := t.TempDir()
 	empty := filepath.Join(directory, "empty.json")
