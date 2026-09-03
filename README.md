@@ -140,16 +140,9 @@ Completed foundation work:
 - bounded Windows `awg execute-local` control client with exact envelope/report/attempt binding and create-new atomic response-directory publication (installed identity, runner, and hosted finalization evidence remain).
 - rollback-safe Windows GitHub runner installation transaction with an exact official release pin, protected control-only storage, direct bounded no-shell registration, independent removal-token cleanup, and a fixed control-account SCM service (real registration/start remains isolated-host evidence).
 
-Not implemented yet at this checkpoint:
+The Windows installer, broker, private-control workflow, background lifecycle, doctor, uninstall, and isolated real-host matrix are implemented and have passed their exact-commit acceptance run. The Linux implementation now includes systemd installation, dedicated identities, POSIX ACL setup/restoration, authenticated Unix IPC, restricted process groups, execution-authority artifacts, control responses, doctor, and uninstall. Native Linux container tests cover the low-level security mechanisms; installed WSL2/systemd and cross-distribution acceptance remain release blockers at this checkpoint.
 
-- hosted result finalization, persistent attempt state, Linux native IPC/artifact implementation, and remaining installed-host integration;
-- Windows mutating installer CLI, service start/integration, and uninstall lifecycle;
-- private control repository bootstrap;
-- Windows isolated smoke lab;
-- Linux/systemd implementation and smoke tests;
-- release/update/uninstall hardening.
-
-The README will be updated as those capabilities become real and verified.
+Operational Linux details are in [`docs/linux.md`](docs/linux.md), and Windows details are in [`docs/windows.md`](docs/windows.md). Release hardening and agent-integration documentation remain before v0.1.
 
 The implemented protocol v1 contracts are documented in [`docs/protocol-v1.md`](docs/protocol-v1.md).
 
@@ -176,6 +169,8 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0017 — Windows Create-New Installer Transaction`](docs/adr/0017-windows-create-new-installer-transaction.md)
 - [`ADR 0018 — Windows Control Client Response Publication`](docs/adr/0018-windows-control-client-response-publication.md)
 - [`ADR 0019 — Windows GitHub Runner Installation`](docs/adr/0019-windows-github-runner-installation.md)
+- [`ADR 0020 — Bounded Background Process Lifecycle`](docs/adr/0020-bounded-background-process-lifecycle.md)
+- [`ADR 0021 — Linux systemd, UID, and Unix-Socket Boundary`](docs/adr/0021-linux-systemd-uid-and-unix-socket-boundary.md)
 
 ## Contributing and security
 

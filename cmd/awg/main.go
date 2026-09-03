@@ -60,7 +60,7 @@ func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.
 	flags := flag.NewFlagSet("awg install", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	dryRun := flags.Bool("dry-run", false, "validate and print the bounded installation plan without mutation")
-	specPath := flags.String("spec", "", "path to a Windows install specification")
+	specPath := flags.String("spec", "", "path to a platform install specification")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}

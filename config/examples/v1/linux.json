@@ -18,7 +18,7 @@
       "executable": "/bin/bash"
     }
   ],
-  "profile_root": "/var/lib/awg/exec",
+  "profile_root": "/var/lib/awg-exec",
   "temp_root": "/var/tmp/awg-exec",
   "path_entries": ["/usr/bin", "/bin"],
   "capabilities": []

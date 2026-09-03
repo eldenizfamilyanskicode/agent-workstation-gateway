@@ -1,13 +1,16 @@
 package runnerpackage
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -22,6 +25,7 @@ type archiveEntry struct {
 type memoryStore struct {
 	directories []string
 	files       map[string]*memoryWriter
+	symlinks    map[string]string
 	failPath    string
 }
 
@@ -34,6 +38,10 @@ func (store *memoryStore) CreateDirectory(path string) error {
 }
 
 func (store *memoryStore) CreateFile(path string) (io.WriteCloser, error) {
+	return store.CreateFileMode(path, 0o600)
+}
+
+func (store *memoryStore) CreateFileMode(path string, _ fs.FileMode) (io.WriteCloser, error) {
 	if path == store.failPath {
 		return nil, errors.New("synthetic file failure")
 	}
@@ -43,6 +51,17 @@ func (store *memoryStore) CreateFile(path string) (io.WriteCloser, error) {
 	writer := &memoryWriter{}
 	store.files[path] = writer
 	return writer, nil
+}
+
+func (store *memoryStore) CreateSymlink(path, target string) error {
+	if path == store.failPath {
+		return errors.New("synthetic link failure")
+	}
+	if store.symlinks == nil {
+		store.symlinks = make(map[string]string)
+	}
+	store.symlinks[path] = target
+	return nil
 }
 
 type memoryWriter struct {
@@ -58,10 +77,14 @@ type discardWriter struct{ io.Writer }
 
 func (*discardStore) CreateDirectory(string) error { return nil }
 func (store *discardStore) CreateFile(string) (io.WriteCloser, error) {
+	return store.CreateFileMode("", 0o600)
+}
+func (store *discardStore) CreateFileMode(string, fs.FileMode) (io.WriteCloser, error) {
 	store.files++
 	return discardWriter{Writer: io.Discard}, nil
 }
-func (discardWriter) Close() error { return nil }
+func (*discardStore) CreateSymlink(string, string) error { return nil }
+func (discardWriter) Close() error                       { return nil }
 
 func (writer *memoryWriter) Close() error {
 	writer.closed = true
@@ -126,6 +149,69 @@ func TestPinnedWindowsX64ArchiveWhenSupplied(t *testing.T) {
 	}
 	if !image.PinnedWindowsX64() || store.files == 0 {
 		t.Fatal("pinned official archive produced no verified file stream")
+	}
+}
+
+func TestPinnedLinuxX64ArchiveWhenSupplied(t *testing.T) {
+	path := os.Getenv("AWG_PINNED_LINUX_RUNNER_ARCHIVE")
+	if path == "" {
+		t.Skip("set AWG_PINNED_LINUX_RUNNER_ARCHIVE for the audited release-asset gate")
+	}
+	archive, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := InspectPinnedLinuxX64(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !image.PinnedLinuxX64() {
+		t.Fatal("official Linux runner did not establish the production trust pin")
+	}
+	store := &discardStore{}
+	if err := image.Extract(context.Background(), store); err != nil || store.files == 0 {
+		t.Fatalf("official Linux runner extraction failed: files=%d err=%v", store.files, err)
+	}
+}
+
+func TestInspectAndExtractLinuxRunner(t *testing.T) {
+	archive := buildLinuxArchive(t, []linuxArchiveEntry{
+		{name: "bin/Runner.Listener", content: []byte("listener"), mode: 0o755},
+		{name: "config.sh", content: []byte("config"), mode: 0o755},
+		{name: "run.sh", content: []byte("run"), mode: 0o755},
+		{name: "bin/current", target: "Runner.Listener"},
+	})
+	image, err := inspectLinux(PinnedLinuxX64Version, archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image.officialLinuxX64 = true
+	store := &memoryStore{}
+	if err := image.Extract(context.Background(), store); err != nil {
+		t.Fatal(err)
+	}
+	if store.files["bin/Runner.Listener"].String() != "listener" || store.symlinks["bin/current"] != "Runner.Listener" {
+		t.Fatalf("unexpected Linux extraction: files=%v links=%v", store.files, store.symlinks)
+	}
+}
+
+func TestInspectLinuxRejectsEscapesAndRuntimeState(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry linuxArchiveEntry
+		rule  string
+	}{
+		{name: "parent path", entry: linuxArchiveEntry{name: "../escape", content: []byte("x")}, rule: "entry-path-invalid"},
+		{name: "absolute path", entry: linuxArchiveEntry{name: "/escape", content: []byte("x")}, rule: "entry-path-invalid"},
+		{name: "reserved state", entry: linuxArchiveEntry{name: ".credentials", content: []byte("x")}, rule: "entry-path-invalid"},
+		{name: "escaping link", entry: linuxArchiveEntry{name: "bin/link", target: "../../escape"}, rule: "entry-link-denied"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			entries := requiredLinuxEntries()
+			entries = append(entries, test.entry)
+			_, err := inspectLinux(PinnedLinuxX64Version, buildLinuxArchive(t, entries))
+			assertPackageError(t, err, test.rule)
+		})
 	}
 }
 
@@ -239,6 +325,56 @@ func buildArchive(t *testing.T, entries []archiveEntry) []byte {
 		}
 	}
 	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
+}
+
+type linuxArchiveEntry struct {
+	name, target string
+	content      []byte
+	mode         int64
+}
+
+func requiredLinuxEntries() []linuxArchiveEntry {
+	return []linuxArchiveEntry{
+		{name: "bin/Runner.Listener", content: []byte("listener"), mode: 0o755},
+		{name: "config.sh", content: []byte("config"), mode: 0o755},
+		{name: "run.sh", content: []byte("run"), mode: 0o755},
+	}
+}
+
+func buildLinuxArchive(t *testing.T, entries []linuxArchiveEntry) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	compressed := gzip.NewWriter(&encoded)
+	writer := tar.NewWriter(compressed)
+	for _, entry := range entries {
+		typeflag := byte(tar.TypeReg)
+		mode := entry.mode
+		if mode == 0 {
+			mode = 0o600
+		}
+		size := int64(len(entry.content))
+		if entry.target != "" {
+			typeflag = tar.TypeSymlink
+			size = 0
+			mode = 0o777
+		}
+		header := &tar.Header{Name: entry.name, Linkname: entry.target, Typeflag: typeflag, Mode: mode, Size: size}
+		if err := writer.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if size > 0 {
+			if _, err := writer.Write(entry.content); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := compressed.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return encoded.Bytes()

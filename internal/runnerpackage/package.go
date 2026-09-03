@@ -1,17 +1,22 @@
 package runnerpackage
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 )
@@ -21,6 +26,7 @@ const (
 	MaxExpandedBytes        = 1024 * 1024 * 1024
 	MaxFileBytes            = 256 * 1024 * 1024
 	MaxEntries              = 8192
+	MaxLinuxEntries         = 16384
 	MaxPathBytes            = 1024
 	MaxPathDepth            = 32
 	MaxRunnerVersionByte    = 32
@@ -28,6 +34,10 @@ const (
 	PinnedWindowsX64Asset   = "actions-runner-win-x64-2.337.0.zip"
 	PinnedWindowsX64Bytes   = 103528051
 	PinnedWindowsX64SHA256  = "1150692afa94e71f872017e254ea55b6eece1eece3fe7e3a6d4c93d0a1b85cfc"
+	PinnedLinuxX64Version   = "2.337.0"
+	PinnedLinuxX64Asset     = "actions-runner-linux-x64-2.337.0.tar.gz"
+	PinnedLinuxX64Bytes     = 226430031
+	PinnedLinuxX64SHA256    = "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
 )
 
 var versionPattern = regexp.MustCompile(`^2\.[0-9]{1,4}\.[0-9]{1,4}$`)
@@ -52,12 +62,26 @@ type Store interface {
 	CreateFile(string) (io.WriteCloser, error)
 }
 
+type ModeStore interface {
+	CreateFileMode(string, fs.FileMode) (io.WriteCloser, error)
+	CreateSymlink(string, string) error
+}
+
 type Image struct {
 	version            string
 	archive            []byte
 	directories        []string
 	files              []imageFile
 	officialWindowsX64 bool
+	officialLinuxX64   bool
+	linuxItems         []linuxImageItem
+}
+
+type linuxImageItem struct {
+	path, target string
+	typeflag     byte
+	mode         fs.FileMode
+	size         int64
 }
 
 type imageFile struct {
@@ -90,6 +114,23 @@ func InspectPinnedWindowsX64(archive []byte) (*Image, error) {
 		return nil, err
 	}
 	image.officialWindowsX64 = true
+	return image, nil
+}
+
+// InspectPinnedLinuxX64 validates the exact official v0.1 Linux runner asset.
+func InspectPinnedLinuxX64(archive []byte) (*Image, error) {
+	if len(archive) != PinnedLinuxX64Bytes {
+		return nil, packageError("pinned-archive-size-mismatch")
+	}
+	digest := sha256.Sum256(archive)
+	if hex.EncodeToString(digest[:]) != PinnedLinuxX64SHA256 {
+		return nil, packageError("archive-digest-mismatch")
+	}
+	image, err := inspectLinux(PinnedLinuxX64Version, archive)
+	if err != nil {
+		return nil, err
+	}
+	image.officialLinuxX64 = true
 	return image, nil
 }
 
@@ -191,6 +232,10 @@ func (image *Image) PinnedWindowsX64() bool {
 		len(image.archive) == PinnedWindowsX64Bytes
 }
 
+func (image *Image) PinnedLinuxX64() bool {
+	return image != nil && image.officialLinuxX64 && image.version == PinnedLinuxX64Version && len(image.archive) == PinnedLinuxX64Bytes
+}
+
 func (image *Image) Version() string {
 	if image == nil {
 		return ""
@@ -201,6 +246,9 @@ func (image *Image) Version() string {
 func (image *Image) Extract(ctx context.Context, store Store) error {
 	if image == nil || ctx == nil || store == nil || len(image.archive) == 0 {
 		return packageError("extract-input-invalid")
+	}
+	if image.officialLinuxX64 {
+		return image.extractLinux(ctx, store)
 	}
 	reader, err := zip.NewReader(bytes.NewReader(image.archive), int64(len(image.archive)))
 	if err != nil || len(reader.File) == 0 {
@@ -235,6 +283,175 @@ func (image *Image) Extract(ctx context.Context, store Store) error {
 		}
 	}
 	return nil
+}
+
+func inspectLinux(version string, archive []byte) (*Image, error) {
+	compressed, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return nil, packageError("archive-invalid")
+	}
+	defer compressed.Close()
+	reader := tar.NewReader(compressed)
+	files := make([]imageFile, 0)
+	items := make([]linuxImageItem, 0)
+	directorySet := make(map[string]struct{})
+	fileSet := make(map[string]struct{})
+	entrySet := make(map[string]struct{})
+	var expanded uint64
+	entries := 0
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil || header == nil {
+			return nil, packageError("archive-invalid")
+		}
+		entries++
+		if entries > MaxLinuxEntries {
+			return nil, packageError("entry-count-denied")
+		}
+		name, root := normalizeLinuxEntryPath(header.Name)
+		if root && header.Typeflag == tar.TypeDir {
+			continue
+		}
+		if root || !validLinuxEntryPath(name) {
+			return nil, packageError("entry-path-invalid")
+		}
+		if _, duplicate := entrySet[name]; duplicate {
+			return nil, packageError("entry-duplicate")
+		}
+		entrySet[name] = struct{}{}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if _, collision := fileSet[name]; collision {
+				return nil, packageError("entry-type-collision")
+			}
+			directorySet[name] = struct{}{}
+			items = append(items, linuxImageItem{path: name, typeflag: tar.TypeDir, mode: 0o700})
+		case tar.TypeReg, tar.TypeRegA:
+			if header.Size < 0 || header.Size > MaxFileBytes {
+				return nil, packageError("entry-file-denied")
+			}
+			if _, collision := directorySet[name]; collision {
+				return nil, packageError("entry-type-collision")
+			}
+			fileSet[name] = struct{}{}
+			expanded += uint64(header.Size)
+			if expanded > MaxExpandedBytes {
+				return nil, packageError("expanded-size-denied")
+			}
+			files = append(files, imageFile{path: name, size: header.Size})
+			items = append(items, linuxImageItem{path: name, typeflag: tar.TypeReg, mode: fs.FileMode(header.Mode) & 0o755, size: header.Size})
+		case tar.TypeSymlink:
+			if !validLinuxSymlink(name, header.Linkname) {
+				return nil, packageError("entry-link-denied")
+			}
+			items = append(items, linuxImageItem{path: name, target: header.Linkname, typeflag: tar.TypeSymlink, mode: 0o777})
+		default:
+			return nil, packageError("entry-type-denied")
+		}
+	}
+	for _, required := range []string{"bin/Runner.Listener", "config.sh", "run.sh"} {
+		if _, ok := fileSet[required]; !ok {
+			return nil, packageError("required-file-missing")
+		}
+	}
+	directories := make([]string, 0, len(directorySet))
+	for directory := range directorySet {
+		directories = append(directories, directory)
+	}
+	sort.Slice(directories, func(left, right int) bool {
+		leftDepth, rightDepth := strings.Count(directories[left], "/"), strings.Count(directories[right], "/")
+		return leftDepth < rightDepth || leftDepth == rightDepth && directories[left] < directories[right]
+	})
+	sort.Slice(files, func(left, right int) bool { return files[left].path < files[right].path })
+	return &Image{version: version, archive: append([]byte(nil), archive...), directories: directories, files: files, linuxItems: items}, nil
+}
+
+func validLinuxEntryPath(name string) bool {
+	if name == "" || len(name) > MaxPathBytes || !utf8.ValidString(name) || strings.ContainsAny(name, "\\\x00") ||
+		strings.HasPrefix(name, "/") || path.Clean(name) != name || len(strings.Split(name, "/")) > MaxPathDepth {
+		return false
+	}
+	segments := strings.Split(name, "/")
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+	}
+	_, reserved := reservedRuntimeRoots[strings.ToLower(segments[0])]
+	return !reserved
+}
+
+func normalizeLinuxEntryPath(name string) (string, bool) {
+	name = strings.TrimPrefix(name, "./")
+	name = strings.TrimSuffix(name, "/")
+	return name, name == ""
+}
+
+func validLinuxSymlink(name, target string) bool {
+	if target == "" || len(target) > MaxPathBytes || strings.ContainsRune(target, 0) || path.IsAbs(target) || path.Clean(target) != target {
+		return false
+	}
+	resolved := path.Clean(path.Join(path.Dir(name), target))
+	return resolved != "." && resolved != ".." && !strings.HasPrefix(resolved, "../")
+}
+
+func (image *Image) extractLinux(ctx context.Context, store Store) error {
+	modeStore, ok := store.(ModeStore)
+	if !ok {
+		return packageError("mode-store-required")
+	}
+	compressed, err := gzip.NewReader(bytes.NewReader(image.archive))
+	if err != nil {
+		return packageError("pinned-archive-invalid")
+	}
+	defer compressed.Close()
+	reader := tar.NewReader(compressed)
+	for {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil || header == nil {
+			return packageError("pinned-archive-invalid")
+		}
+		name, root := normalizeLinuxEntryPath(header.Name)
+		if root && header.Typeflag == tar.TypeDir {
+			continue
+		}
+		if root || !validLinuxEntryPath(name) {
+			return packageError("pinned-archive-invalid")
+		}
+		if header.Typeflag == tar.TypeDir {
+			if err := store.CreateDirectory(name); err != nil {
+				return packageError("directory-create-failed")
+			}
+			continue
+		}
+		if header.Typeflag == tar.TypeSymlink {
+			if !validLinuxSymlink(name, header.Linkname) || modeStore.CreateSymlink(name, header.Linkname) != nil {
+				return packageError("link-create-failed")
+			}
+			continue
+		}
+		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+			return packageError("entry-type-denied")
+		}
+		destination, err := modeStore.CreateFileMode(name, fs.FileMode(header.Mode)&0o755)
+		if err != nil || destination == nil {
+			return packageError("file-create-failed")
+		}
+		copyErr := copyExact(ctx, destination, reader, header.Size)
+		closeErr := destination.Close()
+		if copyErr != nil || closeErr != nil {
+			return packageError("file-copy-failed")
+		}
+	}
 }
 
 func validateEntry(entry *zip.File) (string, bool, error) {

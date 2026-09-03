@@ -54,7 +54,7 @@ func TestInstallMutationRequiresCompletePlatformInputs(t *testing.T) {
 	var stderr bytes.Buffer
 	exitCode := run(context.Background(), []string{"install", "--spec", "synthetic.json"}, &stdout, &stderr)
 	expected := 2
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		expected = 1
 	}
 	if exitCode != expected || stdout.Len() != 0 || stderr.Len() == 0 {
