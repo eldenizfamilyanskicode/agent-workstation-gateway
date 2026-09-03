@@ -33,6 +33,7 @@ type Layout struct {
 	InstallationMetadata    string `json:"installation_metadata"`
 	ExecutionCredential     string `json:"execution_credential"`
 	RunnerRoot              string `json:"runner_root"`
+	RunnerControlExecutable string `json:"runner_control_executable"`
 	RunnerWorkDirectory     string `json:"runner_work_directory"`
 	RunnerResponseDirectory string `json:"runner_response_directory"`
 }

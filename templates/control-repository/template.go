@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 )
@@ -43,6 +44,10 @@ func Render(config Config) ([]RenderedFile, error) {
 		platformpath.IsFilesystemRoot(platformpath.Windows, config.InstallationRoot) || strings.Contains(config.InstallationRoot, "'") {
 		return nil, templateError("config-invalid")
 	}
+	layout, err := installplan.WindowsLayout(config.InstallationRoot)
+	if err != nil {
+		return nil, templateError("config-invalid")
+	}
 	paths := []string{".github/workflows/execute-request.yml", "control-version.json"}
 	result := make([]RenderedFile, 0, len(paths))
 	for _, path := range paths {
@@ -63,6 +68,7 @@ func Render(config Config) ([]RenderedFile, error) {
 			"__AWG_CONTROL_URL__":       config.ControlBinaryURL,
 			"__AWG_CONTROL_SHA256__":    config.ControlBinarySHA256,
 			"__AWG_INSTALLATION_ROOT__": installationRoot,
+			"__AWG_RUNNER_CLIENT__":     layout.RunnerControlExecutable,
 		}
 		rendered := string(content)
 		for placeholder, value := range replacements {

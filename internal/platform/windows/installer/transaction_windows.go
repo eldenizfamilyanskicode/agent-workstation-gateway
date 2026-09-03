@@ -54,6 +54,7 @@ type serviceTransaction interface {
 type runnerStorageTransaction interface {
 	runnerregistration.State
 	runnerservice.RunnerFiles
+	InstallControlImage(context.Context, []byte) error
 	Commit() error
 	Close() error
 }
@@ -166,7 +167,6 @@ func provision(
 	if err := rootLease.WriteControlImage(ctx, prepared.controlImage); err != nil {
 		return nil, installerError("control-image-materialization-failed")
 	}
-	prepared.controlImage = nil
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -213,6 +213,10 @@ func provision(
 		return nil, installerError("runner-storage-provision-failed")
 	}
 	lease.runnerStorage = runnerStorageLease
+	if err := runnerStorageLease.InstallControlImage(ctx, prepared.controlImage); err != nil {
+		return nil, installerError("runner-control-image-materialization-failed")
+	}
+	prepared.controlImage = nil
 	registrationLease, err := deps.runnerRegistration(
 		ctx, prepared.specification.InstallationRoot, prepared.runnerRegistration, runnerStorageLease,
 	)

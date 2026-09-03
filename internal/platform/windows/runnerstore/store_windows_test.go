@@ -33,6 +33,10 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	controlImage := []byte("synthetic control image")
+	if err := lease.InstallControlImage(context.Background(), controlImage); err != nil {
+		t.Fatal(err)
+	}
 	for _, path := range []string{
 		layout.RunnerRoot,
 		filepath.Join(layout.RunnerRoot, "bin"),
@@ -53,6 +57,9 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 	}
 	if err := lease.VerifyServiceExecutable(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(layout.RunnerControlExecutable); err != nil || !bytes.Equal(content, controlImage) {
+		t.Fatal("runner control image was not installed exactly")
 	}
 	marker := filepath.Join(filepath.Dir(layout.RunnerRoot), "preserve.txt")
 	if err := os.WriteFile(marker, []byte("preserve"), 0o600); err != nil {

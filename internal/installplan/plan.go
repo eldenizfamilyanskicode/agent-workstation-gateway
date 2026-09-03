@@ -88,6 +88,8 @@ func Build(specification Spec) (Plan, error) {
 		{Kind: "ensure_protected_directory", Target: layout.BinDirectory},
 		{Kind: "ensure_protected_directory", Target: layout.StateDirectory},
 		{Kind: "create_control_runner_root", Target: layout.RunnerRoot},
+		{Kind: "create_control_client_directory", Target: joinWindows(layout.RunnerRoot, "_awg")},
+		{Kind: "write_control_client", Target: layout.RunnerControlExecutable},
 		{Kind: "create_control_runner_work", Target: layout.RunnerWorkDirectory},
 		{Kind: "create_control_runner_responses", Target: layout.RunnerResponseDirectory},
 	}
@@ -127,6 +129,7 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 		InstallationMetadata:    joinWindows(installationRoot, "state", "management.json"),
 		ExecutionCredential:     joinWindows(installationRoot, "state", "execution-credential.dpapi"),
 		RunnerRoot:              runnerRoot,
+		RunnerControlExecutable: joinWindows(runnerRoot, "_awg", "awg.exe"),
 		RunnerWorkDirectory:     joinWindows(runnerRoot, "_work"),
 		RunnerResponseDirectory: joinWindows(runnerRoot, "responses"),
 	}, nil

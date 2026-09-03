@@ -29,7 +29,7 @@ func TestRenderProducesInertPinnedPrivateControlFiles(t *testing.T) {
 		"permissions: {}", "contents: write", "actions: read", "--event \"$GITHUB_EVENT_PATH\"",
 		"actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
 		"actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
-		`C:\ProgramData\AgentWorkstationGateway\bin\awg.exe`,
+		`C:\ProgramData\AgentWorkstationGateway-runner\_awg\awg.exe`,
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Fatalf("rendered workflow is missing %q", required)

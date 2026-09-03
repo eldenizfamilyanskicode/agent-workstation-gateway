@@ -3,6 +3,7 @@
 package runnerstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
 )
+
+const maxControlImageBytes = 256 * 1024 * 1024
 
 const (
 	fullAccess           windows.ACCESS_MASK = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1ff
@@ -188,6 +191,28 @@ func (lease *Lease) CreateFile(relative string) (io.WriteCloser, error) {
 		return nil, err
 	}
 	return &fileWriter{lease: lease, handle: handle, path: path}, nil
+}
+
+func (lease *Lease) InstallControlImage(ctx context.Context, image []byte) error {
+	if lease == nil || ctx == nil || len(image) == 0 || len(image) > maxControlImageBytes {
+		return storeError("control-image-invalid")
+	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if err := lease.CreateDirectory("_awg"); err != nil {
+		return storeError("control-directory-create-failed")
+	}
+	writer, err := lease.CreateFile("_awg/awg.exe")
+	if err != nil {
+		return storeError("control-image-create-failed")
+	}
+	written, copyErr := io.Copy(writer, bytes.NewReader(image))
+	closeErr := writer.Close()
+	if copyErr != nil || closeErr != nil || written != int64(len(image)) {
+		return storeError("control-image-write-failed")
+	}
+	return nil
 }
 
 func (writer *fileWriter) Write(content []byte) (int, error) {

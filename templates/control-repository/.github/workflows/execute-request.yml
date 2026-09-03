@@ -62,7 +62,7 @@ jobs:
           [IO.File]::WriteAllBytes($accepted, [Convert]::FromBase64String($env:AWG_ACCEPTED_BASE64))
           Remove-Item Env:AWG_ACCEPTED_BASE64
           $attempt = 'run-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT
-          & '__AWG_INSTALLATION_ROOT__\bin\awg.exe' execute-local --accepted $accepted --attempt $attempt --output $response
+          & '__AWG_RUNNER_CLIENT__' execute-local --accepted $accepted --attempt $attempt --output $response
           if ($LASTEXITCODE -ne 0) { throw 'installed gateway execution failed' }
           Copy-Item -LiteralPath $accepted -Destination (Join-Path $response 'accepted.json')
       - name: Return bounded response

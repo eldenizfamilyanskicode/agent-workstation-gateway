@@ -273,6 +273,14 @@ func (transaction *fakeRunnerStorageTransaction) VerifyServiceExecutable(context
 	return nil
 }
 
+func (transaction *fakeRunnerStorageTransaction) InstallControlImage(_ context.Context, image []byte) error {
+	transaction.harness.operations = append(transaction.harness.operations, "runner-control-image-write")
+	if !bytes.Equal(image, syntheticBrokerImage(testSourceSHA)) {
+		return errors.New("unexpected runner control image")
+	}
+	return transaction.harness.failures["runner-control-image-write"]
+}
+
 func (transaction *fakeRunnerStorageTransaction) Commit() error {
 	transaction.harness.operations = append(transaction.harness.operations, "runner-storage-commit")
 	return transaction.harness.failures["runner-storage-commit"]
@@ -318,6 +326,7 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 		"state-write:" + layout.InstallationMetadata,
 		"service-provision",
 		"runner-storage-provision",
+		"runner-control-image-write",
 		"runner-registration-provision",
 		"runner-service-provision",
 	}
@@ -368,6 +377,7 @@ func TestProvisionRollsBackEveryOwnedStageFailure(t *testing.T) {
 		{stage: "execution-password-clear", rule: "execution-password-clear-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "service-provision", rule: "service-provision-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "runner-storage-provision", rule: "runner-storage-provision-failed", closed: []string{"service-close", "root-close", "filesystem-close", "accounts-close"}},
+		{stage: "runner-control-image-write", rule: "runner-control-image-materialization-failed", closed: []string{"runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}},
 		{stage: "runner-registration-provision", rule: "runner-registration-failed", closed: []string{"runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}},
 		{stage: "runner-service-provision", rule: "runner-service-provision-failed", closed: []string{"registration-close", "runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}},
 	}

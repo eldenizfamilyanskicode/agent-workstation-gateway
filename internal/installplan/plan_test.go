@@ -21,6 +21,8 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 		`C:\ProgramData\AgentWorkstationGateway\bin`,
 		`C:\ProgramData\AgentWorkstationGateway\state`,
 		`C:\ProgramData\AgentWorkstationGateway-runner`,
+		`C:\ProgramData\AgentWorkstationGateway-runner\_awg`,
+		`C:\ProgramData\AgentWorkstationGateway-runner\_awg\awg.exe`,
 		`C:\ProgramData\AgentWorkstationGateway-runner\_work`,
 		`C:\ProgramData\AgentWorkstationGateway-runner\responses`,
 		`C:\Users\Alice\Projects`,
@@ -64,6 +66,7 @@ func TestWindowsLayoutDerivesOnlyFixedProtectedPaths(t *testing.T) {
 		InstallationMetadata:    `C:\ProgramData\AgentWorkstationGateway\state\management.json`,
 		ExecutionCredential:     `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
 		RunnerRoot:              `C:\ProgramData\AgentWorkstationGateway-runner`,
+		RunnerControlExecutable: `C:\ProgramData\AgentWorkstationGateway-runner\_awg\awg.exe`,
 		RunnerWorkDirectory:     `C:\ProgramData\AgentWorkstationGateway-runner\_work`,
 		RunnerResponseDirectory: `C:\ProgramData\AgentWorkstationGateway-runner\responses`,
 	}

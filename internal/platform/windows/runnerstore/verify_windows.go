@@ -37,6 +37,7 @@ func VerifyInstalled(ctx context.Context, installationRoot string, configuration
 	}
 	for _, relative := range []string{
 		".runner", ".credentials", ".credentials_rsaparams", filepath.Join("bin", "Runner.Listener.exe"), filepath.Join("bin", "RunnerService.exe"),
+		filepath.Join("_awg", "awg.exe"),
 	} {
 		if err := contextError(ctx); err != nil {
 			return err
