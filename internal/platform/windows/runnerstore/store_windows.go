@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ type Lease struct {
 	controlSID         *windows.SID
 	executionSID       *windows.SID
 	ownedFiles         []string
+	ownedFileKeys      map[string]struct{}
 	ownedDirectories   []string
 	ownedDirectoryKeys map[string]struct{}
 	committed          bool
@@ -78,7 +80,7 @@ func Provision(
 	}
 	lease := &Lease{
 		layout: layout, controlSID: control, executionSID: execution,
-		ownedDirectoryKeys: make(map[string]struct{}),
+		ownedFileKeys: make(map[string]struct{}), ownedDirectoryKeys: make(map[string]struct{}),
 	}
 	failed := true
 	defer func() {
@@ -165,6 +167,7 @@ func (lease *Lease) CreateFile(relative string) (io.WriteCloser, error) {
 		return nil, storeError("file-create-failed")
 	}
 	lease.ownedFiles = append(lease.ownedFiles, path)
+	lease.ownedFileKeys[fold(path)] = struct{}{}
 	if err := applyDescriptor(handle, descriptor); err != nil {
 		_ = windows.CloseHandle(handle)
 		return nil, err
@@ -217,6 +220,7 @@ func (lease *Lease) Commit() error {
 	lease.committed = true
 	lease.closed = true
 	lease.ownedFiles = nil
+	lease.ownedFileKeys = nil
 	lease.ownedDirectories = nil
 	lease.ownedDirectoryKeys = nil
 	return nil
@@ -249,6 +253,7 @@ func (lease *Lease) Close() error {
 		}
 	}
 	lease.ownedFiles = nil
+	lease.ownedFileKeys = nil
 	lease.ownedDirectories = nil
 	lease.ownedDirectoryKeys = nil
 	if failed {
@@ -267,6 +272,112 @@ func (lease *Lease) Layout() (installplan.Layout, error) {
 		return installplan.Layout{}, storeError("lease-closed")
 	}
 	return lease.layout, nil
+}
+
+// SealGeneratedState validates and takes rollback ownership of every object
+// created beneath the exclusively create-owned runner root by the trusted
+// runner configuration process. It replaces inherited ACLs with the exact
+// protected runner policy before registration state can be consumed.
+func (lease *Lease) SealGeneratedState(ctx context.Context) error {
+	if lease == nil || ctx == nil {
+		return storeError("dependency-required")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return storeError("lease-closed")
+	}
+	count := 0
+	if err := lease.sealDirectoryLocked(ctx, lease.layout.RunnerRoot, &count); err != nil {
+		return storeError("generated-state-denied")
+	}
+	return nil
+}
+
+// VerifyRegistrationState checks the fixed credential/configuration files
+// produced by a successful GitHub runner repository registration. It does not
+// parse or expose their secret content.
+func (lease *Lease) VerifyRegistrationState(ctx context.Context) error {
+	if lease == nil || ctx == nil {
+		return storeError("dependency-required")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return storeError("lease-closed")
+	}
+	for _, name := range []string{".runner", ".credentials", ".credentials_rsaparams"} {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
+		path := filepath.Join(lease.layout.RunnerRoot, name)
+		if _, owned := lease.ownedFileKeys[fold(path)]; !owned ||
+			validateObject(path, false, lease.controlSID, lease.executionSID) != nil {
+			return storeError("registration-state-incomplete")
+		}
+	}
+	return nil
+}
+
+func (lease *Lease) sealDirectoryLocked(ctx context.Context, directory string, count *int) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return storeError("generated-directory-read-failed")
+	}
+	for _, entry := range entries {
+		*count++
+		if *count > runnerpackage.MaxEntries+1024 {
+			return storeError("generated-entry-count-denied")
+		}
+		if err := contextError(ctx); err != nil {
+			return err
+		}
+		path := filepath.Join(directory, entry.Name())
+		if platformpath.ValidateAbsolute(platformpath.Windows, path) != nil ||
+			!platformpath.Contains(platformpath.Windows, lease.layout.RunnerRoot, path) ||
+			platformpath.Equal(platformpath.Windows, lease.layout.RunnerRoot, path) {
+			return storeError("generated-path-denied")
+		}
+		information, err := entry.Info()
+		if err != nil || (!information.IsDir() && !information.Mode().IsRegular()) {
+			return storeError("generated-object-shape-denied")
+		}
+		directoryObject := information.IsDir()
+		handle, err := openObject(path, directoryObject, windows.READ_CONTROL|windows.WRITE_DAC|windows.FILE_READ_ATTRIBUTES)
+		if err != nil {
+			return err
+		}
+		descriptor, descriptorErr := objectDescriptor(lease.controlSID, directoryObject)
+		if descriptorErr == nil {
+			descriptorErr = applyDescriptor(handle, descriptor)
+		}
+		if descriptorErr == nil {
+			descriptorErr = validateHandleDescriptor(handle, directoryObject, lease.controlSID, lease.executionSID)
+		}
+		closeErr := windows.CloseHandle(handle)
+		if descriptorErr != nil || closeErr != nil {
+			return storeError("generated-object-seal-failed")
+		}
+		key := fold(path)
+		if directoryObject {
+			if _, owned := lease.ownedDirectoryKeys[key]; !owned {
+				lease.ownedDirectories = append(lease.ownedDirectories, path)
+				lease.ownedDirectoryKeys[key] = struct{}{}
+			}
+			if err := lease.sealDirectoryLocked(ctx, path, count); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, owned := lease.ownedFileKeys[key]; !owned {
+			lease.ownedFiles = append(lease.ownedFiles, path)
+			lease.ownedFileKeys[key] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func (lease *Lease) createAbsoluteDirectory(path string) error {

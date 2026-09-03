@@ -124,6 +124,81 @@ func TestProvisionRejectsInvalidOrEqualIdentitiesBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.T) {
+	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	lease, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := lease.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosticDirectory := filepath.Join(layout.RunnerRoot, "_diag")
+	if err := os.Mkdir(diagnosticDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(layout.RunnerRoot, ".runner"),
+		filepath.Join(layout.RunnerRoot, ".credentials"),
+		filepath.Join(layout.RunnerRoot, ".credentials_rsaparams"),
+		filepath.Join(diagnosticDirectory, "Runner_1.log"),
+	} {
+		if err := os.WriteFile(path, []byte("synthetic generated state"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := lease.SealGeneratedState(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.VerifyRegistrationState(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		diagnosticDirectory,
+		filepath.Join(layout.RunnerRoot, ".runner"),
+		filepath.Join(layout.RunnerRoot, ".credentials"),
+		filepath.Join(layout.RunnerRoot, ".credentials_rsaparams"),
+		filepath.Join(diagnosticDirectory, "Runner_1.log"),
+	} {
+		information, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateObject(path, information.IsDir(), lease.controlSID, lease.executionSID); err != nil {
+			t.Fatalf("generated object was not protected: %v", err)
+		}
+	}
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(layout.RunnerRoot); !os.IsNotExist(err) {
+		t.Fatal("rollback left generated registration state")
+	}
+}
+
+func TestVerifyRegistrationStateRejectsIncompleteGeneratedState(t *testing.T) {
+	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	lease, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	layout, err := lease.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(layout.RunnerRoot, ".runner"), []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.SealGeneratedState(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.VerifyRegistrationState(context.Background()); err == nil {
+		t.Fatal("partial runner registration state was accepted")
+	}
+}
+
 func validImage(t *testing.T) *runnerpackage.Image {
 	t.Helper()
 	var archive bytes.Buffer
