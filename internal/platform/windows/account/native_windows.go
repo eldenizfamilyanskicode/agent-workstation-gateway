@@ -16,7 +16,9 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/accountprovision"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 )
 
 const (
@@ -53,6 +55,52 @@ func (failure *Error) Error() string {
 }
 
 var _ accountprovision.Native = (*Native)(nil)
+
+func VerifyInstalled(configuration installconfig.Config) error {
+	if configuration.Platform != platformpath.Windows || installconfig.Validate(configuration) != nil {
+		return accountError("installed-configuration-invalid")
+	}
+	principals := []struct {
+		role      accountprovision.Role
+		principal installconfig.Principal
+	}{
+		{accountprovision.RoleControl, configuration.ControlIdentity},
+		{accountprovision.RoleExecution, configuration.ExecutionIdentity},
+	}
+	for _, installed := range principals {
+		role, principal := installed.role, installed.principal
+		sid, _, accountType, err := windows.LookupSID("", principal.Name)
+		if err != nil || sid == nil || !sid.IsValid() || accountType != windows.SidTypeUser || sid.String() != principal.Identifier {
+			return accountError("installed-account-identity-mismatch")
+		}
+		if err := verifyUsersOnly(principal.Name); err != nil {
+			return err
+		}
+		rights, _ := fixedRights(role)
+		policy, err := openPolicyWithAccess(policyLookupNames)
+		if err != nil {
+			return err
+		}
+		actual, rightsErr := enumerateRights(policy, sid)
+		lsaCloseProcedure.Call(policy)
+		if rightsErr != nil || !sameRights(actual, rights) {
+			return accountError("installed-account-rights-mismatch")
+		}
+	}
+	return nil
+}
+
+func DeleteInstalled(configuration installconfig.Config) error {
+	if err := VerifyInstalled(configuration); err != nil {
+		return accountError("installed-account-policy-conflict")
+	}
+	for _, name := range []string{configuration.ExecutionIdentity.Name, configuration.ControlIdentity.Name} {
+		if err := deleteAccount(name); err != nil {
+			return accountError("installed-account-delete-failed")
+		}
+	}
+	return nil
+}
 
 func NewNative(specification installplan.Spec) (*Native, error) {
 	if _, err := installplan.Build(specification); err != nil {
@@ -220,6 +268,18 @@ func ensureUsersOnly(name string, sid *windows.SID) error {
 	)
 	if status != 0 && status != uintptr(windows.ERROR_MEMBER_IN_ALIAS) {
 		return accountError("users-group-add-failed")
+	}
+	return verifyUsersOnly(name)
+}
+
+func verifyUsersOnly(name string) error {
+	usersSID, err := windows.CreateWellKnownSid(windows.WinBuiltinUsersSid)
+	if err != nil {
+		return accountError("users-group-sid-failed")
+	}
+	usersName, _, _, err := usersSID.LookupAccount("")
+	if err != nil {
+		return accountError("users-group-name-failed")
 	}
 	groups, err := localGroups(name)
 	if err != nil {

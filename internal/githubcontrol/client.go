@@ -3,7 +3,9 @@ package githubcontrol
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,6 +60,17 @@ type contentResponse struct {
 
 type runnerTokenResponse struct {
 	Token string `json:"token"`
+}
+
+type runnersResponse struct {
+	TotalCount int `json:"total_count"`
+	Runners    []struct {
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	} `json:"runners"`
 }
 
 type createFileRequest struct {
@@ -254,6 +267,128 @@ func (client *Client) RemovalToken(ctx context.Context) ([]byte, error) {
 	return client.runnerToken(ctx, "remove-token")
 }
 
+func (client *Client) DeleteOwnedControlFile(ctx context.Context, path string, expectedSHA256 string) error {
+	if err := client.VerifyOwnedControlFile(ctx, path, expectedSHA256); err != nil {
+		return err
+	}
+	apiPath := "/repos/" + client.repository.Name() + "/contents/" + path
+	existing, content, err := client.readContent(ctx, apiPath)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(content)
+	if hex.EncodeToString(digest[:]) != expectedSHA256 {
+		return githubError("control-file-delete-conflict")
+	}
+	payload, err := json.Marshal(struct {
+		Message string `json:"message"`
+		SHA     string `json:"sha"`
+	}{Message: "Uninstall Agent Workstation Gateway control file", SHA: existing.SHA})
+	if err != nil {
+		return githubError("control-file-delete-encode-failed")
+	}
+	response, err := client.request(ctx, http.MethodDelete, apiPath, payload)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return githubError("control-file-delete-failed")
+	}
+	return nil
+}
+
+func (client *Client) VerifyOwnedControlFile(ctx context.Context, path string, expectedSHA256 string) error {
+	if (path != ".github/workflows/execute-request.yml" && path != "control-version.json") ||
+		len(expectedSHA256) != 64 {
+		return githubError("control-file-delete-input-invalid")
+	}
+	if err := client.VerifyExclusivePrivate(ctx); err != nil {
+		return err
+	}
+	apiPath := "/repos/" + client.repository.Name() + "/contents/" + path
+	_, content, err := client.readContent(ctx, apiPath)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(content)
+	if hex.EncodeToString(digest[:]) != expectedSHA256 {
+		return githubError("control-file-delete-conflict")
+	}
+	return nil
+}
+
+func (client *Client) DeleteRunner(ctx context.Context, runnerName string) error {
+	runnerID, err := client.verifyRunner(ctx, runnerName)
+	if err != nil {
+		return err
+	}
+	deleted, err := client.request(ctx, http.MethodDelete, "/repos/"+client.repository.Name()+"/actions/runners/"+strconv.FormatInt(runnerID, 10), nil)
+	if err != nil {
+		return err
+	}
+	defer deleted.Body.Close()
+	if deleted.StatusCode != http.StatusNoContent {
+		return githubError("runner-delete-failed")
+	}
+	return nil
+}
+
+func (client *Client) VerifyRunner(ctx context.Context, runnerName string) error {
+	_, err := client.verifyRunner(ctx, runnerName)
+	return err
+}
+
+func (client *Client) verifyRunner(ctx context.Context, runnerName string) (int64, error) {
+	if len(runnerName) == 0 || len(runnerName) > 64 {
+		return 0, githubError("runner-name-invalid")
+	}
+	if err := client.VerifyExclusivePrivate(ctx); err != nil {
+		return 0, err
+	}
+	response, err := client.request(ctx, http.MethodGet, "/repos/"+client.repository.Name()+"/actions/runners?per_page=100", nil)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || strings.Contains(response.Header.Get("Link"), `rel="next"`) {
+		return 0, githubError("runner-list-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return 0, githubError("runner-list-response-invalid")
+	}
+	var runners runnersResponse
+	if json.Unmarshal(encoded, &runners) != nil || runners.TotalCount != len(runners.Runners) {
+		return 0, githubError("runner-list-response-invalid")
+	}
+	var runnerID int64
+	for _, runner := range runners.Runners {
+		if runner.Name != runnerName {
+			continue
+		}
+		if runnerID != 0 || runner.ID <= 0 || !hasGatewayLabel(runner.Labels) {
+			return 0, githubError("runner-identity-conflict")
+		}
+		runnerID = runner.ID
+	}
+	if runnerID == 0 {
+		return 0, githubError("runner-not-found")
+	}
+	return runnerID, nil
+}
+
+func hasGatewayLabel(labels []struct {
+	Name string `json:"name"`
+}) bool {
+	for _, label := range labels {
+		if label.Name == runnerregistration.RegistrationLabel {
+			return true
+		}
+	}
+	return false
+}
+
 func (client *Client) readRepository(ctx context.Context) (repositoryResponse, error) {
 	if client == nil || ctx == nil || len(client.token) == 0 {
 		return repositoryResponse{}, githubError("client-closed")
@@ -329,6 +464,30 @@ func readResponse(reader io.Reader) ([]byte, error) {
 		return nil, githubError("response-size-invalid")
 	}
 	return encoded, nil
+}
+
+func (client *Client) readContent(ctx context.Context, apiPath string) (contentResponse, []byte, error) {
+	response, err := client.request(ctx, http.MethodGet, apiPath, nil)
+	if err != nil {
+		return contentResponse{}, nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return contentResponse{}, nil, githubError("control-file-read-failed")
+	}
+	encoded, err := readResponse(response.Body)
+	if err != nil {
+		return contentResponse{}, nil, githubError("control-file-response-invalid")
+	}
+	var existing contentResponse
+	if json.Unmarshal(encoded, &existing) != nil || existing.Type != "file" || existing.Encoding != "base64" || existing.SHA == "" {
+		return contentResponse{}, nil, githubError("control-file-response-invalid")
+	}
+	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(existing.Content, "\n", ""))
+	if err != nil {
+		return contentResponse{}, nil, githubError("control-file-response-invalid")
+	}
+	return existing, content, nil
 }
 
 func (client *Client) PublishAccepted(ctx context.Context, record v1.AcceptedRequestRecord) error {

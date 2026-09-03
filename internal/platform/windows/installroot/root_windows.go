@@ -142,7 +142,7 @@ func (lease *Lease) WriteProtectedFile(path string, content []byte) error {
 	if lease.closed {
 		return rootError("lease-closed")
 	}
-	if path != lease.layout.ExecutionCredential && path != lease.layout.InstallationConfig {
+	if path != lease.layout.ExecutionCredential && path != lease.layout.InstallationConfig && path != lease.layout.InstallationMetadata {
 		return rootError("state-path-not-owned")
 	}
 	if lease.attempted[path] {

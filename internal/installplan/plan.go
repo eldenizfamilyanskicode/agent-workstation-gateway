@@ -95,6 +95,7 @@ func Build(specification Spec) (Plan, error) {
 	operations = append(operations,
 		Operation{Kind: "write_execution_credential", Target: layout.ExecutionCredential},
 		Operation{Kind: "write_installed_configuration", Target: layout.InstallationConfig},
+		Operation{Kind: "write_installation_metadata", Target: layout.InstallationMetadata},
 	)
 	return Plan{
 		PlanVersion: installconfig.CurrentVersion,
@@ -123,6 +124,7 @@ func WindowsLayout(installationRoot string) (Layout, error) {
 		ControlExecutable:       joinWindows(installationRoot, "bin", "awg.exe"),
 		StateDirectory:          joinWindows(installationRoot, "state"),
 		InstallationConfig:      joinWindows(installationRoot, "state", "installation.json"),
+		InstallationMetadata:    joinWindows(installationRoot, "state", "management.json"),
 		ExecutionCredential:     joinWindows(installationRoot, "state", "execution-credential.dpapi"),
 		RunnerRoot:              runnerRoot,
 		RunnerWorkDirectory:     joinWindows(runnerRoot, "_work"),

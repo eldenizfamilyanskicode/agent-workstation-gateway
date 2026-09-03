@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installmetadata"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/protectedstate"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
@@ -31,6 +32,7 @@ type Input struct {
 	ControlImage       []byte
 	RunnerImage        *runnerpackage.Image
 	RunnerRegistration runnerregistration.Request
+	Metadata           installmetadata.Metadata
 }
 
 type preparedInput struct {
@@ -40,6 +42,7 @@ type preparedInput struct {
 	controlImage       []byte
 	runnerImage        *runnerpackage.Image
 	runnerRegistration runnerregistration.Request
+	metadata           []byte
 }
 
 type Error struct {
@@ -84,12 +87,27 @@ func prepareInputWithPolicy(input Input, requirePinnedRunner bool) (preparedInpu
 		zeroBytes(registration.RemovalToken)
 		return preparedInput{}, installerError("runner-registration-invalid")
 	}
+	if err := installmetadata.Validate(input.Metadata); err != nil ||
+		input.Metadata.InstallationRoot != input.Specification.InstallationRoot ||
+		input.Metadata.GatewaySourceSHA != input.GatewaySourceSHA ||
+		input.Metadata.ControlRepository != registration.Repository.Name() ||
+		input.Metadata.RunnerName != registration.RunnerName {
+		zeroBytes(registration.RegistrationToken)
+		zeroBytes(registration.RemovalToken)
+		return preparedInput{}, installerError("installation-metadata-invalid")
+	}
+	metadata, err := installmetadata.MarshalCanonical(input.Metadata)
+	if err != nil {
+		zeroBytes(registration.RegistrationToken)
+		zeroBytes(registration.RemovalToken)
+		return preparedInput{}, installerError("installation-metadata-invalid")
+	}
 	return preparedInput{
 		specification:    cloneSpecification(input.Specification),
 		gatewaySourceSHA: input.GatewaySourceSHA,
 		brokerImage:      append([]byte(nil), input.BrokerImage...),
 		controlImage:     append([]byte(nil), input.ControlImage...),
-		runnerImage:      input.RunnerImage, runnerRegistration: registration,
+		runnerImage:      input.RunnerImage, runnerRegistration: registration, metadata: metadata,
 	}, nil
 }
 

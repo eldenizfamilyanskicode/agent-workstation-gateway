@@ -28,6 +28,7 @@ func TestBuildWindowsPlanUsesOnlyFixedProtectedLayout(t *testing.T) {
 		`C:\ProgramData\AWGTemp`,
 		`C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
 		`C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
+		`C:\ProgramData\AgentWorkstationGateway\state\management.json`,
 	}
 	if len(plan.Operations) != len(expectedTargets) {
 		t.Fatalf("unexpected operation count: %d", len(plan.Operations))
@@ -60,6 +61,7 @@ func TestWindowsLayoutDerivesOnlyFixedProtectedPaths(t *testing.T) {
 		ControlExecutable:       `C:\ProgramData\AgentWorkstationGateway\bin\awg.exe`,
 		StateDirectory:          `C:\ProgramData\AgentWorkstationGateway\state`,
 		InstallationConfig:      `C:\ProgramData\AgentWorkstationGateway\state\installation.json`,
+		InstallationMetadata:    `C:\ProgramData\AgentWorkstationGateway\state\management.json`,
 		ExecutionCredential:     `C:\ProgramData\AgentWorkstationGateway\state\execution-credential.dpapi`,
 		RunnerRoot:              `C:\ProgramData\AgentWorkstationGateway-runner`,
 		RunnerWorkDirectory:     `C:\ProgramData\AgentWorkstationGateway-runner\_work`,

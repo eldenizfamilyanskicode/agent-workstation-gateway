@@ -30,6 +30,7 @@ type Layout struct {
 	ControlExecutable       string `json:"control_executable"`
 	StateDirectory          string `json:"state_directory"`
 	InstallationConfig      string `json:"installation_config"`
+	InstallationMetadata    string `json:"installation_metadata"`
 	ExecutionCredential     string `json:"execution_credential"`
 	RunnerRoot              string `json:"runner_root"`
 	RunnerWorkDirectory     string `json:"runner_work_directory"`

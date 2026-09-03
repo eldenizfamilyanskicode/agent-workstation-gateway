@@ -55,6 +55,33 @@ func ProbeFixedService() (exists bool, resultErr error) {
 	return false, serviceError("service-read-query-failed")
 }
 
+func VerifyFixedService(installationRoot string, controlAccount string) error {
+	plan, err := BuildPlan(installationRoot, controlAccount)
+	if err != nil {
+		return err
+	}
+	manager, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return serviceError("scm-read-connect-failed")
+	}
+	defer windows.CloseServiceHandle(manager)
+	name, err := windows.UTF16PtrFromString(plan.Name)
+	if err != nil {
+		return serviceError("service-name-invalid")
+	}
+	handle, err := windows.OpenService(manager, name, windows.SERVICE_QUERY_CONFIG|windows.READ_CONTROL)
+	if err != nil {
+		return serviceError("service-read-query-failed")
+	}
+	service := &windowsService{service: &mgr.Service{Name: plan.Name, Handle: handle}}
+	verifyErr := service.Verify(plan)
+	closeErr := service.Close()
+	if verifyErr != nil || closeErr != nil {
+		return serviceError("service-verification-failed")
+	}
+	return nil
+}
+
 func newNativeBackend() (*windowsBackend, error) {
 	handle, err := windows.OpenSCManager(nil, nil, scmInstallerAccess)
 	if err != nil {

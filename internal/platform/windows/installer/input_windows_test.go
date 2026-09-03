@@ -22,7 +22,7 @@ func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
 	input := Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
 		ControlImage: syntheticBrokerImage(testSourceSHA),
-		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t), Metadata: syntheticMetadata(),
 	}
 	prepared, err := prepareInputWithPolicy(input, false)
 	if err != nil {
@@ -40,7 +40,7 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 	valid := Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
 		ControlImage: syntheticBrokerImage(testSourceSHA),
-		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+		RunnerImage:  syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t), Metadata: syntheticMetadata(),
 	}
 	tests := []struct {
 		name   string
@@ -58,6 +58,7 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 		{name: "control image", rule: "control-image-invalid", mutate: func(input *Input) { input.ControlImage = nil }},
 		{name: "runner image", rule: "runner-image-invalid", mutate: func(input *Input) { input.RunnerImage = nil }},
 		{name: "runner registration", rule: "runner-registration-invalid", mutate: func(input *Input) { input.RunnerRegistration.RemovalToken = nil }},
+		{name: "metadata", rule: "installation-metadata-invalid", mutate: func(input *Input) { input.Metadata.ControlRepository = "other/control" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -65,6 +66,7 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 				Specification: cloneSpecification(valid.Specification), GatewaySourceSHA: valid.GatewaySourceSHA,
 				BrokerImage: append([]byte(nil), valid.BrokerImage...), ControlImage: append([]byte(nil), valid.ControlImage...), RunnerImage: valid.RunnerImage,
 				RunnerRegistration: cloneRegistration(valid.RunnerRegistration),
+				Metadata:           valid.Metadata,
 			}
 			test.mutate(&input)
 			_, err := prepareInputWithPolicy(input, false)

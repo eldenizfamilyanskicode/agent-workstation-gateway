@@ -14,6 +14,7 @@ import (
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/brokerservice"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/runnerservice"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/serviceinstall"
 )
 
 const transitionTimeout = 30 * time.Second
@@ -98,6 +99,33 @@ func Inspect(ctx context.Context) (Status, error) {
 		return Status{}, serviceError("runner-status-failed")
 	}
 	return Status{BrokerRunning: broker, RunnerRunning: runner}, nil
+}
+
+func Delete(ctx context.Context, installationRoot string, controlAccount string) error {
+	if serviceinstall.VerifyFixedService(installationRoot) != nil ||
+		runnerservice.VerifyFixedService(installationRoot, controlAccount) != nil {
+		return serviceError("installed-service-policy-invalid")
+	}
+	if err := Stop(ctx); err != nil {
+		return err
+	}
+	manager, err := openManager()
+	if err != nil {
+		return serviceError("scm-connect-failed")
+	}
+	defer windows.CloseServiceHandle(manager)
+	for _, name := range []string{runnerservice.Name, brokerservice.Name} {
+		service, err := openService(manager, name, windows.DELETE|windows.SERVICE_QUERY_STATUS)
+		if err != nil {
+			return serviceError("service-delete-open-failed")
+		}
+		deleteErr := service.Delete()
+		closeErr := service.Close()
+		if deleteErr != nil || closeErr != nil {
+			return serviceError("service-delete-failed")
+		}
+	}
+	return nil
 }
 
 func openManager() (windows.Handle, error) {

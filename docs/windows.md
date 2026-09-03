@@ -112,6 +112,22 @@ The selected repository must be owned by the authenticated personal account, pri
 
 Bootstrap creates or confirms only `.github/workflows/execute-request.yml` and `control-version.json`. Existing differing content is a hard conflict. It then requests short-lived registration/removal tokens, commits the create-new local account/ACL/service/runner transaction, and starts the fixed broker and runner services. A failure never prints a token, issue body, private local path, or GitHub response body.
 
+Run health checks with the matching installed binary:
+
+```powershell
+C:\ProgramData\AgentWorkstationGateway\bin\awg.exe doctor --installation-root C:\ProgramData\AgentWorkstationGateway
+```
+
+Doctor reads only fixed protected files, validates both account identities and exact logon rights, approved/isolated-root ACL policy, protected runner credentials, exact service configuration/DACLs and running state, then revalidates private visibility, the exclusive reader boundary, the registered runner identity, and both fixed control-file digests. Its JSON output contains booleans only; it never displays credential or runner-state contents.
+
+Uninstall must be invoked from the matching release executable outside the protected installation root because Windows cannot remove the currently executing installed image:
+
+```powershell
+.\awg-windows-amd64.exe uninstall --installation-root C:\ProgramData\AgentWorkstationGateway
+```
+
+Uninstall preflights all protected local state and remote ownership before mutation. It stops both services, removes only the exact labeled repository runner and installer-created control files whose digests still match, deletes the fixed services, removes the protected runner/install roots and create-owned profile/temp roots, revokes only the installed execution SID from approved development roots, and finally deletes the two exact local accounts. It preserves the private repository, ledger, README, control files that predated installation, development files, and unrelated local paths. A changed or extra protected-root object fails closed instead of being recursively removed.
+
 Before protected-state loading, the service requires an actual SCM process context and exact LocalSystem TokenUser. It reports bounded StartPending/Running/StopPending states and accepts only Stop/Shutdown. Shutdown cancels execution, closes the listener and any active connection to interrupt IPC, and waits for the owned sequential loop. Only closed peer/session failures continue to another accept; listener infrastructure and handle-close failures terminate the service. See [ADR 0015](adr/0015-windows-scm-broker-service.md).
 
 The binary can be built for inspection with a synthetic source value:

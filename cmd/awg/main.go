@@ -34,6 +34,10 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return runInstall(ctx, args[1:], stdout, stderr)
 	case "execute-local":
 		return runExecuteLocal(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr, gatewaySourceSHA)
+	case "uninstall":
+		return runUninstall(ctx, args[1:], stdout, stderr, gatewaySourceSHA)
 	default:
 		fmt.Fprintln(stderr, "unknown awg command")
 		return 2
@@ -45,6 +49,8 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  awg install --dry-run --spec <path>")
 	fmt.Fprintln(writer, "  awg install --spec <path> --repository <owner/name> --broker-image <path> --control-image <path> --runner-archive <path> --hosted-control-url <url> --hosted-control-sha256 <digest> [--create-repository]")
 	fmt.Fprintln(writer, "  awg execute-local --accepted <path> --attempt <id> --output <path>")
+	fmt.Fprintln(writer, "  awg doctor --installation-root <path>")
+	fmt.Fprintln(writer, "  awg uninstall --installation-root <path>")
 }
 
 func runInstall(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {

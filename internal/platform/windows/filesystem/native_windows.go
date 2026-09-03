@@ -116,14 +116,13 @@ func (native *Native) ConvergeIsolatedRoot(path string, identifier string) (file
 	attributes := windows.SecurityAttributes{
 		Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: descriptor,
 	}
-	created := false
 	if err := windows.CreateDirectory(pointer, &attributes); err != nil {
-		if !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
-			return nil, filesystemCause("isolated-directory-create-failed", err)
+		if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			return nil, filesystemError("isolated-directory-already-exists")
 		}
-	} else {
-		created = true
+		return nil, filesystemCause("isolated-directory-create-failed", err)
 	}
+	created := true
 	handle, err := openDirectory(path, windows.READ_CONTROL|windows.WRITE_DAC)
 	if err != nil {
 		if created {
@@ -176,28 +175,8 @@ func convergeIsolatedHandle(
 	created bool,
 	creation *windows.SECURITY_DESCRIPTOR,
 ) (result *change, resultErr error) {
-	var original *windows.SECURITY_DESCRIPTOR
-	originalProtected := false
-	if created {
-		original = creation
-		originalProtected = true
-	} else {
-		var err error
-		original, err = queryDescriptor(handle)
-		if err != nil {
-			_ = windows.CloseHandle(handle)
-			return nil, err
-		}
-		originalProtected, err = descriptorProtected(original)
-		if err != nil {
-			_ = windows.CloseHandle(handle)
-			return nil, err
-		}
-		if dacl, _, daclErr := original.DACL(); daclErr != nil || dacl == nil {
-			_ = windows.CloseHandle(handle)
-			return nil, filesystemError("isolated-original-dacl-required")
-		}
-	}
+	original := creation
+	originalProtected := true
 	result = &change{
 		handle: handle, path: path, original: original, originalProtected: originalProtected,
 		protectionChanged: true, created: created,

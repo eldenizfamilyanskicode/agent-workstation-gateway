@@ -49,12 +49,16 @@ func TestInstallDryRunPrintsPlanWithoutMutation(t *testing.T) {
 	}
 }
 
-func TestInstallRejectsMutationMode(t *testing.T) {
+func TestInstallMutationRequiresCompletePlatformInputs(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exitCode := run(context.Background(), []string{"install", "--spec", "synthetic.json"}, &stdout, &stderr)
-	if exitCode != 2 || stdout.Len() != 0 {
-		t.Fatal("install accepted mutation mode before the privileged installer exists")
+	expected := 2
+	if runtime.GOOS != "windows" {
+		expected = 1
+	}
+	if exitCode != expected || stdout.Len() != 0 || stderr.Len() == 0 {
+		t.Fatal("install accepted incomplete mutation inputs")
 	}
 }
 

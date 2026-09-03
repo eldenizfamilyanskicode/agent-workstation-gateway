@@ -10,11 +10,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installmetadata"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	sharedstate "github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installstate"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platformpath"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerregistration"
 )
@@ -312,6 +315,7 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 		"state-write:" + layout.InstallationConfig,
 		"layout-verify",
 		"execution-password-clear",
+		"state-write:" + layout.InstallationMetadata,
 		"service-provision",
 		"runner-storage-provision",
 		"runner-registration-provision",
@@ -514,11 +518,24 @@ func preparedInstallerInput(t *testing.T) preparedInput {
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA,
 		BrokerImage: syntheticBrokerImage(testSourceSHA), ControlImage: syntheticBrokerImage(testSourceSHA), RunnerImage: syntheticRunnerImage(t),
 		RunnerRegistration: syntheticRunnerRegistration(t),
+		Metadata:           syntheticMetadata(),
 	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return prepared
+}
+
+func syntheticMetadata() installmetadata.Metadata {
+	return installmetadata.Metadata{
+		MetadataVersion: installmetadata.Version, Platform: platformpath.Windows,
+		InstallationRoot: installerSpec().InstallationRoot, ControlRepository: "example/control-plane",
+		RunnerName: "workstation-1", GatewaySourceSHA: testSourceSHA,
+		ControlFiles: []installmetadata.ControlFile{
+			{Path: ".github/workflows/execute-request.yml", SHA256: strings.Repeat("1", 64), Owned: true},
+			{Path: "control-version.json", SHA256: strings.Repeat("2", 64), Owned: true},
+		},
+	}
 }
 
 func syntheticRunnerImage(t *testing.T) *runnerpackage.Image {

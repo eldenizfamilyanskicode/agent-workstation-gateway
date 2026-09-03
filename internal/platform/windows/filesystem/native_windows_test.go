@@ -160,6 +160,25 @@ func TestNewIsolatedRootRollbackRemovesOnlyCreatedLeaf(t *testing.T) {
 	}
 }
 
+func TestIsolatedRootNeverAdoptsPreexistingDirectory(t *testing.T) {
+	configuration, _, profile, _ := temporaryConfiguration(t)
+	if err := os.Mkdir(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	native, err := New(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutation, err := native.ConvergeIsolatedRoot(profile, syntheticExecutionSID)
+	if mutation != nil {
+		t.Fatal("preexisting isolated root produced a mutation lease")
+	}
+	assertFilesystemError(t, err, "isolated-directory-already-exists")
+	if _, err := os.Stat(profile); err != nil {
+		t.Fatal("preexisting isolated root was removed")
+	}
+}
+
 func temporaryConfiguration(t *testing.T) (installconfig.Config, string, string, string) {
 	t.Helper()
 	base := canonicalDirectory(t, t.TempDir())

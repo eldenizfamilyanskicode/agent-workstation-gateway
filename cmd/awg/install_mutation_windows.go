@@ -5,12 +5,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
 	"os/exec"
 
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/githubcontrol"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installmetadata"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/installer"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/protectedstate"
@@ -149,11 +152,17 @@ func runInstallMutationWithDependencies(
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	controlFiles := make([]installmetadata.ControlFile, 0, len(rendered))
 	for _, file := range rendered {
-		if _, err := github.EnsureControlFile(ctx, file.Path, file.Content); err != nil {
+		created, err := github.EnsureControlFile(ctx, file.Path, file.Content)
+		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
+		digest := sha256.Sum256(file.Content)
+		controlFiles = append(controlFiles, installmetadata.ControlFile{
+			Path: file.Path, SHA256: hex.EncodeToString(digest[:]), Owned: created,
+		})
 	}
 	registrationToken, err := github.RegistrationToken(ctx)
 	if err != nil {
@@ -178,6 +187,11 @@ func runInstallMutationWithDependencies(
 		RunnerRegistration: runnerregistration.Request{
 			Repository: repository, RunnerName: *runnerName,
 			RegistrationToken: registrationToken, RemovalToken: removalToken,
+		},
+		Metadata: installmetadata.Metadata{
+			MetadataVersion: installmetadata.Version, Platform: specification.Platform,
+			InstallationRoot: specification.InstallationRoot, ControlRepository: *repositoryName,
+			RunnerName: *runnerName, GatewaySourceSHA: sourceSHA, ControlFiles: controlFiles,
 		},
 	})
 	if err != nil || lease == nil {

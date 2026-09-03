@@ -187,6 +187,10 @@ func provision(
 	if err := accounts.ClearExecutionPassword(); err != nil || accounts.ExecutionPassword() != nil {
 		return nil, installerError("execution-password-clear-failed")
 	}
+	if err := rootLease.WriteProtectedFile(layout.InstallationMetadata, prepared.metadata); err != nil {
+		return nil, installerError("installation-metadata-materialization-failed")
+	}
+	prepared.metadata = nil
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}

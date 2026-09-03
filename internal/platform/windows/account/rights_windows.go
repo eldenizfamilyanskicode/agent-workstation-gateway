@@ -79,10 +79,14 @@ func setAndVerifyRights(sid *windows.SID, rights []string) error {
 }
 
 func openPolicy() (uintptr, error) {
+	return openPolicyWithAccess(policyCreateAccount | policyLookupNames)
+}
+
+func openPolicyWithAccess(access uint32) (uintptr, error) {
 	attributes := lsaObjectAttributes{length: uint32(unsafe.Sizeof(lsaObjectAttributes{}))}
 	var policy uintptr
 	status, _, _ := lsaOpenPolicyProcedure.Call(
-		0, uintptr(unsafe.Pointer(&attributes)), policyCreateAccount|policyLookupNames, uintptr(unsafe.Pointer(&policy)),
+		0, uintptr(unsafe.Pointer(&attributes)), uintptr(access), uintptr(unsafe.Pointer(&policy)),
 	)
 	if status != 0 || policy == 0 {
 		return 0, accountError("lsa-policy-open-failed")

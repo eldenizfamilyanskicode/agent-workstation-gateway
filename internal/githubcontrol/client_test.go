@@ -2,7 +2,9 @@ package githubcontrol
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -207,6 +209,44 @@ func TestCreatePersonalPrivateRepository(t *testing.T) {
 	defer client.Close()
 	if err := client.CreatePersonalPrivate(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUninstallPreflightBindsRunnerAndControlContent(t *testing.T) {
+	controlContent := []byte("synthetic fixed control content")
+	digest := sha256.Sum256(controlContent)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/alice/example-control":
+			_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private","owner":{"login":"alice"}}`))
+		case "/user":
+			_, _ = writer.Write([]byte(`{"login":"alice"}`))
+		case "/repos/alice/example-control/collaborators":
+			_, _ = writer.Write([]byte(`[{"login":"alice"}]`))
+		case "/repos/alice/example-control/actions/runners":
+			_, _ = writer.Write([]byte(`{"total_count":1,"runners":[{"id":7,"name":"awg-windows-x64","labels":[{"name":"agent-workstation-gateway"}]}]}`))
+		case "/repos/alice/example-control/contents/control-version.json":
+			response := contentResponse{Type: "file", Encoding: "base64", Content: base64.StdEncoding.EncodeToString(controlContent), SHA: "git-blob-sha"}
+			_ = json.NewEncoder(writer).Encode(response)
+		default:
+			t.Errorf("unexpected preflight request: %s", request.URL.String())
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.VerifyRunner(context.Background(), "awg-windows-x64"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.VerifyOwnedControlFile(context.Background(), "control-version.json", hex.EncodeToString(digest[:])); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.VerifyOwnedControlFile(context.Background(), "control-version.json", strings.Repeat("0", 64)); err == nil {
+		t.Fatal("changed control content was accepted")
 	}
 }
 
