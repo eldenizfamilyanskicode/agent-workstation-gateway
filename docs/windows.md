@@ -1,6 +1,6 @@
 # Windows Implementation and Installation State
 
-Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, workload-ACL, authenticated named-pipe, and broker startup-composition mechanisms exist, but mutating installation, service installation, control-side integration, and installed-host E2E are not complete.
+Windows x64 is AWG's first native implementation target. The repository is still pre-alpha: native path, token, process, Job Object, protected-state, account, rights, workload-ACL, authenticated named-pipe, broker startup-composition, and SCM lifecycle mechanisms exist, but mutating installation/service registration, control-side integration, and installed-host E2E are not complete.
 
 ## Installation input versus installed configuration
 
@@ -84,7 +84,21 @@ The client sends a fixed four-byte preface so the server can read a message befo
 
 One authenticated connection now maps to one broker session: bounded envelope read, strict decode, authorization, shared execution lifecycle, report binding, and one terminal response. Default fixed local deadlines are 30 seconds for the request, 30 minutes for response streaming, and 30 seconds per terminal-ack read. A request cannot change them. The completion ACK prevents premature message-pipe disconnect; invalid or absent ACK remains bounded and fails the exchange.
 
-The Windows broker host now loads only exact protected state paths derived from the installation root, denies overlap with every execution-owned root, obtains the Windows directory through the native API instead of copying the service environment, and composes the real token/launcher/collector/session/listener graph without a current-user fallback. Credential protection is revalidated on every acquisition. Each accepted connection is closed after one session. SCM service hosting is still absent. See [ADR 0014](adr/0014-windows-broker-startup-composition.md).
+The Windows broker host now loads only exact protected state paths derived from the installation root, denies overlap with every execution-owned root, obtains the Windows directory through the native API instead of copying the service environment, and composes the real token/launcher/collector/session/listener graph without a current-user fallback. Credential protection is revalidated on every acquisition. Each accepted connection is closed after one session. See [ADR 0014](adr/0014-windows-broker-startup-composition.md).
+
+## SCM broker lifecycle
+
+`awg-broker.exe` is now a service-only binary with the fixed SCM name `AgentWorkstationGatewayBroker`. Its image command line accepts only the administrator-protected installation root. The exact public source commit is embedded by trusted release builds; an empty, uppercase, symbolic, or otherwise non-lowercase-40-hex source value fails startup. There is no interactive console fallback.
+
+Before protected-state loading, the service requires an actual SCM process context and exact LocalSystem TokenUser. It reports bounded StartPending/Running/StopPending states and accepts only Stop/Shutdown. Shutdown cancels execution, closes the listener and any active connection to interrupt IPC, and waits for the owned sequential loop. Only closed peer/session failures continue to another accept; listener infrastructure and handle-close failures terminate the service. See [ADR 0015](adr/0015-windows-scm-broker-service.md).
+
+The binary can be built for inspection with a synthetic source value:
+
+```powershell
+go build -ldflags "-X main.gatewaySourceSHA=0123456789abcdef0123456789abcdef01234567" ./cmd/awg-broker
+```
+
+This does not install or start the service. The mutating installer must create the fixed service with protected binary/configuration paths and recovery policy before the binary is usable.
 
 ## Bounded artifact collection
 
@@ -96,6 +110,6 @@ The platform-neutral response layer now streams those exact handles in manifest 
 
 ## Evidence limits
 
-Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, exact protected-state descriptor/single-link/stability policy, ordinary protected-file denial, DPAPI mechanism behavior, real-dependency broker startup composition through injected protected-state/listener seams, real temporary-directory workload-ACL convergence/rollback, real local named-pipe descriptor/authentication/framing behavior, current-token artifact collection/handle stability/hard-link/quota behavior, platform-neutral response framing/digest/transaction cleanup behavior, and current-peer authenticated session composition with fake execution internals.
+Hosted and local Windows tests cover strict planning, no-mutation dry-run behavior, materializer ordering/zeroing, exact protected-state descriptor/single-link/stability policy, ordinary protected-file denial, DPAPI mechanism behavior, real-dependency broker startup composition through injected protected-state/listener seams, SCM state/retry/stop ownership through an injected runtime, native interactive-context and non-LocalSystem TokenUser denial, real temporary-directory workload-ACL convergence/rollback, real local named-pipe descriptor/authentication/framing behavior, current-token artifact collection/handle stability/hard-link/quota behavior, platform-neutral response framing/digest/transaction cleanup behavior, and current-peer authenticated session composition with fake execution internals.
 
 They do not prove successful elevated convergence to a LocalSystem owner, account creation, effective logon-right assignment, LocalSystem service behavior, or effective installed execution-account access/denial. The pipe test treats the current process as the synthetic control SID; it does not prove installed control success, installed execution/unrelated-user denial, non-control administrator rejection, or remote-host rejection. Artifact tests likewise use the current token and do not prove allowed/denied reads by installed execution identity; the local reparse test can skip without symbolic-link privilege. The workload-ACL tests use a nonexistent synthetic SID under fresh temporary directories and restore/remove their own state. The native account package performs only a real absent-name query during ordinary tests; all mutating account/LSA and installed-token evidence is a later isolated-smoke gate. Cross-compilation is not Windows security evidence.

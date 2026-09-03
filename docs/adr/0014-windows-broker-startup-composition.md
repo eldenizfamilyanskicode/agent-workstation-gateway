@@ -28,7 +28,7 @@ Startup proceeds in this order:
 
 There is no current-user, current-environment, `os/exec`, unprotected-state, or alternate-listener fallback. Internal dependency seams exist only to exercise startup failure and ownership behavior in package tests; every dependency is mandatory and the exported constructor supplies only the native production implementations.
 
-The runtime accepts one authenticated connection at a time through `HandleOne`. It passes the connection to the bounded session and closes it on every successful or failed session return. Partial listener construction is closed, and runtime close is idempotent. The later service loop owns repetition, shutdown cancellation, and SCM state reporting; those concerns do not broaden this composition boundary.
+The runtime accepts one authenticated connection at a time through `HandleOne`. It passes the connection to the bounded session and closes it on every successful or failed session return. Partial listener construction is closed, and runtime close is idempotent. Runtime close also interrupts its active accepted connection so the service can bound shutdown of request/response I/O. The service loop owns repetition, cancellation, and SCM state reporting; those concerns do not broaden this composition boundary.
 
 ## Consequences
 
