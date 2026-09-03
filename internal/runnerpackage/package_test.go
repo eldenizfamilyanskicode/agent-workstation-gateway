@@ -85,6 +85,15 @@ func TestInspectAndExtractPinnedRunnerPackage(t *testing.T) {
 	}
 }
 
+func TestProductionInspectionRejectsCallerPairedArchiveAndDigest(t *testing.T) {
+	archive := validArchive(t)
+	if image, err := Inspect(PinnedWindowsX64Version, digest(archive), archive); err != nil || image.PinnedWindowsX64() {
+		t.Fatal("generic validation incorrectly established the production trust pin")
+	}
+	_, err := InspectPinnedWindowsX64(archive)
+	assertPackageError(t, err, "pinned-archive-size-mismatch")
+}
+
 func TestInspectRejectsInvalidVersionDigestAndShape(t *testing.T) {
 	valid := validArchive(t)
 	tests := []struct {

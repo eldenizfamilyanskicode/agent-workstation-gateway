@@ -17,13 +17,17 @@ import (
 )
 
 const (
-	MaxArchiveBytes      = 256 * 1024 * 1024
-	MaxExpandedBytes     = 1024 * 1024 * 1024
-	MaxFileBytes         = 256 * 1024 * 1024
-	MaxEntries           = 8192
-	MaxPathBytes         = 1024
-	MaxPathDepth         = 32
-	MaxRunnerVersionByte = 32
+	MaxArchiveBytes         = 256 * 1024 * 1024
+	MaxExpandedBytes        = 1024 * 1024 * 1024
+	MaxFileBytes            = 256 * 1024 * 1024
+	MaxEntries              = 8192
+	MaxPathBytes            = 1024
+	MaxPathDepth            = 32
+	MaxRunnerVersionByte    = 32
+	PinnedWindowsX64Version = "2.337.0"
+	PinnedWindowsX64Asset   = "actions-runner-win-x64-2.337.0.zip"
+	PinnedWindowsX64Bytes   = 103528051
+	PinnedWindowsX64SHA256  = "1150692afa94e71f872017e254ea55b6eece1eece3fe7e3a6d4c93d0a1b85cfc"
 )
 
 var versionPattern = regexp.MustCompile(`^2\.[0-9]{1,4}\.[0-9]{1,4}$`)
@@ -49,10 +53,11 @@ type Store interface {
 }
 
 type Image struct {
-	version     string
-	archive     []byte
-	directories []string
-	files       []imageFile
+	version            string
+	archive            []byte
+	directories        []string
+	files              []imageFile
+	officialWindowsX64 bool
 }
 
 type imageFile struct {
@@ -70,6 +75,25 @@ func (failure *Error) Error() string {
 }
 
 func Inspect(version string, expectedSHA256 string, archive []byte) (*Image, error) {
+	return inspect(version, expectedSHA256, archive)
+}
+
+// InspectPinnedWindowsX64 is the only production package entry point. The
+// version, exact asset size, and independently recorded release digest are
+// immutable v0.1 trust inputs rather than caller-selected metadata.
+func InspectPinnedWindowsX64(archive []byte) (*Image, error) {
+	if len(archive) != PinnedWindowsX64Bytes {
+		return nil, packageError("pinned-archive-size-mismatch")
+	}
+	image, err := inspect(PinnedWindowsX64Version, PinnedWindowsX64SHA256, archive)
+	if err != nil {
+		return nil, err
+	}
+	image.officialWindowsX64 = true
+	return image, nil
+}
+
+func inspect(version string, expectedSHA256 string, archive []byte) (*Image, error) {
 	if len(version) == 0 || len(version) > MaxRunnerVersionByte || !versionPattern.MatchString(version) {
 		return nil, packageError("version-invalid")
 	}
@@ -160,6 +184,11 @@ func Inspect(version string, expectedSHA256 string, archive []byte) (*Image, err
 	})
 	sort.Slice(files, func(left int, right int) bool { return files[left].path < files[right].path })
 	return &Image{version: version, archive: pinned, directories: directories, files: files}, nil
+}
+
+func (image *Image) PinnedWindowsX64() bool {
+	return image != nil && image.officialWindowsX64 && image.version == PinnedWindowsX64Version &&
+		len(image.archive) == PinnedWindowsX64Bytes
 }
 
 func (image *Image) Version() string {

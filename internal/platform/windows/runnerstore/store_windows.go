@@ -64,8 +64,22 @@ func Provision(
 	executionIdentifier string,
 	image *runnerpackage.Image,
 ) (result *Lease, resultErr error) {
+	return provision(ctx, installationRoot, controlIdentifier, executionIdentifier, image, true)
+}
+
+func provision(
+	ctx context.Context,
+	installationRoot string,
+	controlIdentifier string,
+	executionIdentifier string,
+	image *runnerpackage.Image,
+	requirePinnedOfficial bool,
+) (result *Lease, resultErr error) {
 	if ctx == nil || image == nil || image.Version() == "" {
 		return nil, storeError("dependency-required")
+	}
+	if requirePinnedOfficial && !image.PinnedWindowsX64() {
+		return nil, storeError("official-runner-package-required")
 	}
 	layout, err := installplan.WindowsLayout(installationRoot)
 	if err != nil {

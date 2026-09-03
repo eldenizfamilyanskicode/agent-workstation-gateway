@@ -25,7 +25,7 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 	installationRoot := filepath.Join(t.TempDir(), "gateway")
 	image := validImage(t)
 	controlSID := currentAccountSID(t)
-	lease, err := Provision(context.Background(), installationRoot, controlSID, syntheticExecutionSID, image)
+	lease, err := provisionFixture(context.Background(), installationRoot, controlSID, syntheticExecutionSID, image)
 	if err != nil {
 		t.Fatalf("%v: %v", err, errors.Unwrap(err))
 	}
@@ -71,7 +71,7 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 
 func TestProvisionCommitPreservesRunnerAndClosesLease(t *testing.T) {
 	installationRoot := filepath.Join(t.TempDir(), "gateway")
-	lease, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
+	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestProvisionRejectsExistingRunnerRootWithoutAdoption(t *testing.T) {
 	if err := os.WriteFile(marker, []byte("preserve"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t)); err == nil {
+	if _, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t)); err == nil {
 		t.Fatal("pre-existing runner root was adopted")
 	}
 	content, err := os.ReadFile(marker)
@@ -118,7 +118,7 @@ func TestProvisionRejectsInvalidOrEqualIdentitiesBeforeMutation(t *testing.T) {
 	installationRoot := filepath.Join(parent, "gateway")
 	control := currentAccountSID(t)
 	for _, identifiers := range [][2]string{{"S-1-5-18", syntheticExecutionSID}, {control, control}} {
-		if _, err := Provision(context.Background(), installationRoot, identifiers[0], identifiers[1], validImage(t)); err == nil {
+		if _, err := provisionFixture(context.Background(), installationRoot, identifiers[0], identifiers[1], validImage(t)); err == nil {
 			t.Fatal("invalid identity policy was accepted")
 		}
 		if _, err := os.Stat(installationRoot + "-runner"); !os.IsNotExist(err) {
@@ -127,9 +127,19 @@ func TestProvisionRejectsInvalidOrEqualIdentitiesBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestExportedProvisionRejectsUnpinnedPackageBeforeMutation(t *testing.T) {
+	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	if _, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t)); err == nil {
+		t.Fatal("caller-paired archive and digest reached runner storage mutation")
+	}
+	if _, err := os.Stat(installationRoot + "-runner"); !os.IsNotExist(err) {
+		t.Fatal("unpinned package mutated runner storage")
+	}
+}
+
 func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.T) {
 	installationRoot := filepath.Join(t.TempDir(), "gateway")
-	lease, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
+	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +199,7 @@ func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.
 
 func TestVerifyRegistrationStateRejectsIncompleteGeneratedState(t *testing.T) {
 	installationRoot := filepath.Join(t.TempDir(), "gateway")
-	lease, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
+	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,6 +246,14 @@ func validImage(t *testing.T) *runnerpackage.Image {
 		t.Fatal(err)
 	}
 	return image
+}
+
+func provisionFixture(
+	ctx context.Context,
+	installationRoot, controlIdentifier, executionIdentifier string,
+	image *runnerpackage.Image,
+) (*Lease, error) {
+	return provision(ctx, installationRoot, controlIdentifier, executionIdentifier, image, false)
 }
 
 func currentAccountSID(t *testing.T) string {
