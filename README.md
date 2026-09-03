@@ -128,6 +128,7 @@ Completed foundation work:
 - Windows artifact collection under exact execution-token impersonation with portable bounded globs, link/final-path enforcement, stable content handles, and explicit omissions (broker upload and installed-token evidence remain).
 - strict one-exchange broker response streaming with canonical reports, bounded retained output, stable artifact-handle chunks, end-to-end length/digest checks, and transactional receiver cleanup (real broker dependency composition and upload remain).
 - one-request broker session orchestration with immutable installed policy, authorize-before-run ordering, coarse failures, fixed I/O deadlines, report rebinding, and authenticated Windows pipe integration using fake execution internals (real service composition remains).
+- Windows broker startup composition from exact protected fixed state, native-only system-directory facts, execution-authority separation, real launcher/collector/session dependencies, and owned one-connection lifecycle (SCM hosting and installed-identity E2E remain).
 
 Not implemented yet at this checkpoint:
 
@@ -159,6 +160,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0011 — Windows Artifacts Under Execution Authority`](docs/adr/0011-windows-execution-authority-artifacts.md)
 - [`ADR 0012 — Bounded Local Broker Response Stream`](docs/adr/0012-bounded-local-broker-response-stream.md)
 - [`ADR 0013 — Bounded Broker Session Orchestration`](docs/adr/0013-bounded-broker-session-orchestration.md)
+- [`ADR 0014 — Windows Broker Startup Composition`](docs/adr/0014-windows-broker-startup-composition.md)
 
 ## Contributing and security
 
