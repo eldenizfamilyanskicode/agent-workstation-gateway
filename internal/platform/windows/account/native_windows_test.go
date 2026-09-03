@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/accountprovision"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
@@ -70,6 +72,25 @@ func TestMutablePasswordUTF16CanBeClearedWithoutEcho(t *testing.T) {
 		if value != 0 {
 			t.Fatal("native account password buffer was not cleared")
 		}
+	}
+}
+
+func TestAccountDomainUsersSIDMatchesCurrentTokenPrimaryGroup(t *testing.T) {
+	token := windows.GetCurrentProcessToken()
+	user, err := token.GetTokenUser()
+	if err != nil || user == nil || user.User.Sid == nil {
+		t.Fatalf("current token user: %v", err)
+	}
+	primary, err := token.GetTokenPrimaryGroup()
+	if err != nil || primary == nil || primary.PrimaryGroup == nil {
+		t.Fatalf("current token primary group: %v", err)
+	}
+	actual, err := accountDomainUsersSID(user.User.Sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(actual, primary.PrimaryGroup.String()) {
+		t.Fatalf("account-domain Users SID %q does not match token primary group %q", actual, primary.PrimaryGroup.String())
 	}
 }
 

@@ -31,6 +31,7 @@ const (
 	localGroupsIndirect      = 1
 	policyCreateAccount      = 0x00000010
 	policyLookupNames        = 0x00000800
+	securityMaxSIDSize       = 68
 )
 
 var netapi32 = windows.NewLazySystemDLL("netapi32.dll")
@@ -38,6 +39,8 @@ var netUserAddProcedure = netapi32.NewProc("NetUserAdd")
 var netUserDelProcedure = netapi32.NewProc("NetUserDel")
 var netLocalGroupAddMembersProcedure = netapi32.NewProc("NetLocalGroupAddMembers")
 var netUserGetLocalGroupsProcedure = netapi32.NewProc("NetUserGetLocalGroups")
+var getWindowsAccountDomainSIDProcedure = advapi32.NewProc("GetWindowsAccountDomainSid")
+var createWellKnownSIDProcedure = advapi32.NewProc("CreateWellKnownSid")
 
 type Native struct {
 	controlAccount   string
@@ -169,13 +172,46 @@ func (native *Native) CreateAccount(name string, password []byte) (accountprovis
 	if err != nil || sid == nil || !sid.IsValid() || accountType != windows.SidTypeUser {
 		return accountprovision.Account{Name: name}, true, accountError("account-sid-lookup-failed")
 	}
-	usersSID, err := windows.CreateWellKnownSid(windows.WinBuiltinUsersSid)
+	primaryGroupIdentifier, err := accountDomainUsersSID(sid)
 	if err != nil {
 		return accountprovision.Account{Name: name}, true, accountError("primary-group-sid-failed")
 	}
 	return accountprovision.Account{
-		Name: name, Identifier: sid.String(), PrimaryGroupIdentifier: usersSID.String(),
+		Name: name, Identifier: sid.String(), PrimaryGroupIdentifier: primaryGroupIdentifier,
 	}, true, nil
+}
+
+func accountDomainUsersSID(accountSID *windows.SID) (string, error) {
+	if accountSID == nil || !accountSID.IsValid() {
+		return "", accountError("account-sid-invalid")
+	}
+	var domainSize uint32
+	getWindowsAccountDomainSIDProcedure.Call(
+		uintptr(unsafe.Pointer(accountSID)), 0, uintptr(unsafe.Pointer(&domainSize)),
+	)
+	if domainSize == 0 || domainSize > securityMaxSIDSize {
+		return "", accountError("account-domain-sid-size-invalid")
+	}
+	domainBuffer := make([]byte, domainSize)
+	domainSID := (*windows.SID)(unsafe.Pointer(&domainBuffer[0]))
+	success, _, _ := getWindowsAccountDomainSIDProcedure.Call(
+		uintptr(unsafe.Pointer(accountSID)), uintptr(unsafe.Pointer(domainSID)), uintptr(unsafe.Pointer(&domainSize)),
+	)
+	if success == 0 || !domainSID.IsValid() {
+		return "", accountError("account-domain-sid-query-failed")
+	}
+	primaryBuffer := make([]byte, securityMaxSIDSize)
+	primarySID := (*windows.SID)(unsafe.Pointer(&primaryBuffer[0]))
+	primarySize := uint32(len(primaryBuffer))
+	success, _, _ = createWellKnownSIDProcedure.Call(
+		uintptr(windows.WinAccountDomainUsersSid), uintptr(unsafe.Pointer(domainSID)),
+		uintptr(unsafe.Pointer(primarySID)), uintptr(unsafe.Pointer(&primarySize)),
+	)
+	runtime.KeepAlive(domainBuffer)
+	if success == 0 || !primarySID.IsValid() || primarySize == 0 || primarySize > securityMaxSIDSize {
+		return "", accountError("primary-group-sid-create-failed")
+	}
+	return primarySID.String(), nil
 }
 
 func (native *Native) ApplyPolicy(role accountprovision.Role, account accountprovision.Account) error {

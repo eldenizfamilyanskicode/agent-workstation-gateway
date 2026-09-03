@@ -16,9 +16,9 @@ Initial v0.1 installation is create-new-only for both configured local account n
 
 The installer generates two independent 32-byte mutable passwords from `crypto/rand`. Generation guarantees upper-case, lower-case, digit, and punctuation classes, then cryptographically shuffles all positions. Password bytes are never formatted as a Go string by the transaction. Both are cleared when the account lease commits or rolls back; the composite installer additionally clears the execution password immediately after protected credential materialization.
 
-The native boundary is constructed from the validated install specification and accepts only its control/execution names. `NetUserAdd` creates a normal standard local account with a non-expiring machine-generated password. The returned user SID is resolved natively; the expected primary-group SID is built-in Users.
+The native boundary is constructed from the validated install specification and accepts only its control/execution names. `NetUserAdd` creates a normal standard local account with a non-expiring machine-generated password. The returned user SID is resolved natively. Its runtime token primary group is the account domain's Users group (`DOMAIN_GROUP_RID_USERS`); the installer derives that SID from the account SID and records it for exact token validation.
 
-Each created account is added to built-in Users. Direct/indirect local-group enumeration must then report Users only. Any additional membership—including Administrators, Remote Desktop/Management, or `docker-users`—is a closed failure. Docker remains a later explicit capability transaction.
+Each created account is separately added to the built-in local Users alias. Direct/indirect local-group enumeration must then report that alias only. This local membership SID is not the account-domain primary-group SID reported by a logon token. Any additional membership—including Administrators, Remote Desktop/Management, or `docker-users`—is a closed failure. Docker remains a later explicit capability transaction.
 
 Fixed direct LSA rights are:
 
