@@ -133,11 +133,12 @@ Completed foundation work:
 - fixed create-new Windows broker-service registration with minimal SCM rights, disabled security-first staging, exact LocalSystem/Administrators service ACL, bounded recovery, independent verification, and create-owned rollback (elevated isolated-host evidence remains).
 - create-new Windows installer transaction composing account/SID, workload ACL, protected root/image/state, execution-secret clearing, and fixed service leases under reverse rollback (not yet exposed by the CLI or elevated-smoke verified).
 - bounded Windows `awg execute-local` control client with exact envelope/report/attempt binding and create-new atomic response-directory publication (installed identity, runner, and hosted finalization evidence remain).
+- rollback-safe Windows GitHub runner installation transaction with an exact official release pin, protected control-only storage, direct bounded no-shell registration, independent removal-token cleanup, and a fixed control-account SCM service (real registration/start remains isolated-host evidence).
 
 Not implemented yet at this checkpoint:
 
 - hosted result finalization, persistent attempt state, Linux native IPC/artifact implementation, and remaining installed-host integration;
-- Windows installer CLI/runner composition, service start/integration, and uninstall lifecycle;
+- Windows mutating installer CLI, service start/integration, and uninstall lifecycle;
 - private control repository bootstrap;
 - Windows isolated smoke lab;
 - Linux/systemd implementation and smoke tests;
@@ -169,6 +170,7 @@ The implemented shared policy boundary and its explicit native gaps are document
 - [`ADR 0016 — Windows Broker Service Registration`](docs/adr/0016-windows-broker-service-registration.md)
 - [`ADR 0017 — Windows Create-New Installer Transaction`](docs/adr/0017-windows-create-new-installer-transaction.md)
 - [`ADR 0018 — Windows Control Client Response Publication`](docs/adr/0018-windows-control-client-response-publication.md)
+- [`ADR 0019 — Windows GitHub Runner Installation`](docs/adr/0019-windows-github-runner-installation.md)
 
 ## Contributing and security
 
