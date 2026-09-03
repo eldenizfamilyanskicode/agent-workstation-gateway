@@ -10,6 +10,8 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/protectedstate"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerregistration"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/sourceversion"
 )
 
@@ -23,15 +25,19 @@ const (
 )
 
 type Input struct {
-	Specification    installplan.Spec
-	GatewaySourceSHA string
-	BrokerImage      []byte
+	Specification      installplan.Spec
+	GatewaySourceSHA   string
+	BrokerImage        []byte
+	RunnerImage        *runnerpackage.Image
+	RunnerRegistration runnerregistration.Request
 }
 
 type preparedInput struct {
-	specification    installplan.Spec
-	gatewaySourceSHA string
-	brokerImage      []byte
+	specification      installplan.Spec
+	gatewaySourceSHA   string
+	brokerImage        []byte
+	runnerImage        *runnerpackage.Image
+	runnerRegistration runnerregistration.Request
 }
 
 type Error struct {
@@ -43,6 +49,10 @@ func (failure *Error) Error() string {
 }
 
 func prepareInput(input Input) (preparedInput, error) {
+	return prepareInputWithPolicy(input, true)
+}
+
+func prepareInputWithPolicy(input Input, requirePinnedRunner bool) (preparedInput, error) {
 	if _, err := installplan.Build(input.Specification); err != nil {
 		return preparedInput{}, installerError("install-specification-invalid")
 	}
@@ -52,11 +62,28 @@ func prepareInput(input Input) (preparedInput, error) {
 	if !validBrokerImage(input.BrokerImage, input.GatewaySourceSHA) {
 		return preparedInput{}, installerError("broker-image-invalid")
 	}
+	if input.RunnerImage == nil || input.RunnerImage.Version() == "" ||
+		(requirePinnedRunner && !input.RunnerImage.PinnedWindowsX64()) {
+		return preparedInput{}, installerError("runner-image-invalid")
+	}
+	registration := cloneRegistration(input.RunnerRegistration)
+	if err := runnerregistration.ValidateRequest(input.Specification.InstallationRoot, registration); err != nil {
+		zeroBytes(registration.RegistrationToken)
+		zeroBytes(registration.RemovalToken)
+		return preparedInput{}, installerError("runner-registration-invalid")
+	}
 	return preparedInput{
 		specification:    cloneSpecification(input.Specification),
 		gatewaySourceSHA: input.GatewaySourceSHA,
 		brokerImage:      append([]byte(nil), input.BrokerImage...),
+		runnerImage:      input.RunnerImage, runnerRegistration: registration,
 	}, nil
+}
+
+func cloneRegistration(request runnerregistration.Request) runnerregistration.Request {
+	request.RegistrationToken = append([]byte(nil), request.RegistrationToken...)
+	request.RemovalToken = append([]byte(nil), request.RemovalToken...)
+	return request
 }
 
 func validBrokerImage(image []byte, sourceSHA string) bool {

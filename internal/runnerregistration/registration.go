@@ -108,6 +108,16 @@ func VerifyPrivateRepository(repository string, private bool) (PrivateRepository
 
 func (repository PrivateRepository) Name() string { return repository.name }
 
+func ValidateRequest(installationRoot string, request Request) error {
+	prepared, err := prepare(installationRoot, request)
+	if err != nil {
+		return err
+	}
+	zeroBytes(prepared.registrationToken)
+	zeroBytes(prepared.removalToken)
+	return nil
+}
+
 func Provision(
 	ctx context.Context,
 	installationRoot string,

@@ -16,7 +16,11 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/filesystem"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/installroot"
 	winstate "github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/installstate"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/runnerservice"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/runnerstore"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/platform/windows/serviceinstall"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerregistration"
 )
 
 type accountTransaction interface {
@@ -46,19 +50,30 @@ type serviceTransaction interface {
 	Close() error
 }
 
+type runnerStorageTransaction interface {
+	runnerregistration.State
+	runnerservice.RunnerFiles
+	Commit() error
+	Close() error
+}
+
 type dependencies struct {
-	preflightService func() error
-	accounts         func(context.Context, installplan.Spec) (accountTransaction, error)
-	filesystem       func(context.Context, installconfig.Config) (filesystemTransaction, error)
-	root             func(context.Context, string) (rootTransaction, error)
-	materialize      func(
+	preflightService       func() error
+	preflightRunnerService func() error
+	accounts               func(context.Context, installplan.Spec) (accountTransaction, error)
+	filesystem             func(context.Context, installconfig.Config) (filesystemTransaction, error)
+	root                   func(context.Context, string) (rootTransaction, error)
+	materialize            func(
 		context.Context,
 		installplan.Spec,
 		installplan.IdentityBinding,
 		[]byte,
 		sharedstate.Store,
 	) (sharedstate.Receipt, error)
-	service func(context.Context, string) (serviceTransaction, error)
+	service            func(context.Context, string) (serviceTransaction, error)
+	runnerStorage      func(context.Context, string, string, string, *runnerpackage.Image) (runnerStorageTransaction, error)
+	runnerRegistration func(context.Context, string, runnerregistration.Request, runnerStorageTransaction) (serviceTransaction, error)
+	runnerService      func(context.Context, string, string, []byte, runnerStorageTransaction) (serviceTransaction, error)
 }
 
 type nativeAccountTransaction struct {
@@ -71,6 +86,9 @@ type Lease struct {
 	filesystem    filesystemTransaction
 	root          rootTransaction
 	service       serviceTransaction
+	runnerStorage runnerStorageTransaction
+	registration  serviceTransaction
+	runnerService serviceTransaction
 	configuration installconfig.Config
 	sourceSHA     string
 	closed        bool
@@ -92,11 +110,16 @@ func provision(
 	if ctx == nil || !completeDependencies(deps) {
 		return nil, installerError("dependency-required")
 	}
+	defer zeroBytes(prepared.runnerRegistration.RegistrationToken)
+	defer zeroBytes(prepared.runnerRegistration.RemovalToken)
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := deps.preflightService(); err != nil {
 		return nil, installerError("service-preflight-failed")
+	}
+	if err := deps.preflightRunnerService(); err != nil {
+		return nil, installerError("runner-service-preflight-failed")
 	}
 	lease := &Lease{sourceSHA: prepared.gatewaySourceSHA}
 	failed := true
@@ -173,32 +196,37 @@ func provision(
 	if len(accounts.ControlPassword()) == 0 {
 		return nil, installerError("control-password-unavailable")
 	}
+	runnerStorageLease, err := deps.runnerStorage(
+		ctx, prepared.specification.InstallationRoot, binding.ControlIdentifier,
+		binding.ExecutionIdentifier, prepared.runnerImage,
+	)
+	if err != nil || runnerStorageLease == nil {
+		return nil, installerError("runner-storage-provision-failed")
+	}
+	lease.runnerStorage = runnerStorageLease
+	registrationLease, err := deps.runnerRegistration(
+		ctx, prepared.specification.InstallationRoot, prepared.runnerRegistration, runnerStorageLease,
+	)
+	if err != nil || registrationLease == nil {
+		return nil, installerError("runner-registration-failed")
+	}
+	lease.registration = registrationLease
+	controlPassword := append([]byte(nil), accounts.ControlPassword()...)
+	runnerServiceLease, err := deps.runnerService(
+		ctx, prepared.specification.InstallationRoot, prepared.specification.ControlAccount,
+		controlPassword, runnerStorageLease,
+	)
+	zeroBytes(controlPassword)
+	if err != nil || runnerServiceLease == nil {
+		return nil, installerError("runner-service-provision-failed")
+	}
+	lease.runnerService = runnerServiceLease
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	lease.configuration = cloneConfiguration(configuration)
 	failed = false
 	return lease, nil
-}
-
-// UseControlPassword provides a bounded temporary copy for the later trusted
-// runner-service installer. The copy is cleared immediately after the
-// synchronous consumer returns and is never formatted as a string here.
-func (lease *Lease) UseControlPassword(consumer func([]byte) error) error {
-	if lease == nil || consumer == nil {
-		return installerError("dependency-required")
-	}
-	lease.mu.Lock()
-	defer lease.mu.Unlock()
-	if lease.closed || lease.accounts == nil {
-		return installerError("lease-closed")
-	}
-	password := append([]byte(nil), lease.accounts.ControlPassword()...)
-	if len(password) == 0 {
-		return installerError("control-password-unavailable")
-	}
-	defer zeroBytes(password)
-	if err := consumer(password); err != nil {
-		return installerError("control-password-consumer-failed")
-	}
-	return nil
 }
 
 func (lease *Lease) Configuration() (installconfig.Config, error) {
@@ -231,9 +259,19 @@ func (lease *Lease) Commit() error {
 	}
 	lease.mu.Lock()
 	defer lease.mu.Unlock()
-	if lease.closed || lease.accounts == nil || lease.filesystem == nil || lease.root == nil || lease.service == nil {
+	if lease.closed || lease.accounts == nil || lease.filesystem == nil || lease.root == nil || lease.service == nil ||
+		lease.runnerStorage == nil || lease.registration == nil || lease.runnerService == nil {
 		return installerError("lease-closed")
 	}
+	if err := lease.runnerService.Commit(); err != nil {
+		rollbackFailed := lease.rollbackLocked()
+		lease.closed = true
+		if rollbackFailed {
+			return installerError("commit-rollback-failed")
+		}
+		return installerError("runner-service-commit-failed")
+	}
+	lease.runnerService = nil
 	if err := lease.service.Commit(); err != nil {
 		rollbackFailed := lease.rollbackLocked()
 		lease.closed = true
@@ -245,6 +283,12 @@ func (lease *Lease) Commit() error {
 	lease.service = nil
 
 	finalizationFailed := false
+	if lease.registration.Commit() != nil {
+		finalizationFailed = true
+	}
+	if lease.runnerStorage.Commit() != nil {
+		finalizationFailed = true
+	}
 	if lease.accounts.Commit() != nil {
 		finalizationFailed = true
 	}
@@ -257,6 +301,8 @@ func (lease *Lease) Commit() error {
 	lease.accounts = nil
 	lease.filesystem = nil
 	lease.root = nil
+	lease.registration = nil
+	lease.runnerStorage = nil
 	lease.closed = true
 	lease.configuration = installconfig.Config{}
 	lease.sourceSHA = ""
@@ -287,6 +333,24 @@ func (lease *Lease) Close() error {
 
 func (lease *Lease) rollbackLocked() bool {
 	failed := false
+	if lease.runnerService != nil {
+		if lease.runnerService.Close() != nil {
+			failed = true
+		}
+		lease.runnerService = nil
+	}
+	if lease.registration != nil {
+		if lease.registration.Close() != nil {
+			failed = true
+		}
+		lease.registration = nil
+	}
+	if lease.runnerStorage != nil {
+		if lease.runnerStorage.Close() != nil {
+			failed = true
+		}
+		lease.runnerStorage = nil
+	}
 	if lease.service != nil {
 		if lease.service.Close() != nil {
 			failed = true
@@ -320,6 +384,13 @@ func nativeDependencies() dependencies {
 			exists, err := serviceinstall.ProbeFixedService()
 			if err != nil || exists {
 				return installerError("fixed-service-unavailable")
+			}
+			return nil
+		},
+		preflightRunnerService: func() error {
+			exists, err := runnerservice.ProbeFixedService()
+			if err != nil || exists {
+				return installerError("fixed-runner-service-unavailable")
 			}
 			return nil
 		},
@@ -360,12 +431,22 @@ func nativeDependencies() dependencies {
 		service: func(ctx context.Context, installationRoot string) (serviceTransaction, error) {
 			return serviceinstall.Provision(ctx, installationRoot)
 		},
+		runnerStorage: func(ctx context.Context, installationRoot, controlSID, executionSID string, image *runnerpackage.Image) (runnerStorageTransaction, error) {
+			return runnerstore.Provision(ctx, installationRoot, controlSID, executionSID, image)
+		},
+		runnerRegistration: func(ctx context.Context, installationRoot string, request runnerregistration.Request, state runnerStorageTransaction) (serviceTransaction, error) {
+			return runnerregistration.Provision(ctx, installationRoot, request, runnerregistration.NewWindowsExecutor(), state)
+		},
+		runnerService: func(ctx context.Context, installationRoot, controlAccount string, password []byte, files runnerStorageTransaction) (serviceTransaction, error) {
+			return runnerservice.Provision(ctx, installationRoot, controlAccount, password, files)
+		},
 	}
 }
 
 func completeDependencies(deps dependencies) bool {
-	return deps.preflightService != nil && deps.accounts != nil && deps.filesystem != nil &&
-		deps.root != nil && deps.materialize != nil && deps.service != nil
+	return deps.preflightService != nil && deps.preflightRunnerService != nil && deps.accounts != nil && deps.filesystem != nil &&
+		deps.root != nil && deps.materialize != nil && deps.service != nil && deps.runnerStorage != nil &&
+		deps.runnerRegistration != nil && deps.runnerService != nil
 }
 
 func (transaction *nativeAccountTransaction) IdentityBinding() installplan.IdentityBinding {

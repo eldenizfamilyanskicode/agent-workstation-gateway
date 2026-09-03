@@ -3,8 +3,11 @@
 package installer
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"testing"
@@ -12,6 +15,8 @@ import (
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installconfig"
 	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installplan"
 	sharedstate "github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/installstate"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerpackage"
+	"github.com/eldenizfamilyanskicode/agent-workstation-gateway/internal/runnerregistration"
 )
 
 type transactionHarness struct {
@@ -21,6 +26,9 @@ type transactionHarness struct {
 	filesystem        *fakeLifecycleTransaction
 	root              *fakeRootTransaction
 	service           *fakeLifecycleTransaction
+	runnerStorage     *fakeRunnerStorageTransaction
+	registration      *fakeLifecycleTransaction
+	runnerService     *fakeLifecycleTransaction
 	executionOriginal []byte
 	controlOriginal   []byte
 	badReceipt        bool
@@ -42,6 +50,10 @@ type fakeLifecycleTransaction struct {
 type fakeRootTransaction struct {
 	harness *transactionHarness
 	layout  installplan.Layout
+}
+
+type fakeRunnerStorageTransaction struct {
+	harness *transactionHarness
 }
 
 type fakeSealer struct {
@@ -68,6 +80,9 @@ func newTransactionHarness(t *testing.T) *transactionHarness {
 	harness.filesystem = &fakeLifecycleTransaction{harness: harness, name: "filesystem"}
 	harness.root = &fakeRootTransaction{harness: harness, layout: layout}
 	harness.service = &fakeLifecycleTransaction{harness: harness, name: "service"}
+	harness.runnerStorage = &fakeRunnerStorageTransaction{harness: harness}
+	harness.registration = &fakeLifecycleTransaction{harness: harness, name: "registration"}
+	harness.runnerService = &fakeLifecycleTransaction{harness: harness, name: "runner-service"}
 	return harness
 }
 
@@ -76,6 +91,10 @@ func (harness *transactionHarness) dependencies() dependencies {
 		preflightService: func() error {
 			harness.operations = append(harness.operations, "service-preflight")
 			return harness.failures["service-preflight"]
+		},
+		preflightRunnerService: func() error {
+			harness.operations = append(harness.operations, "runner-service-preflight")
+			return harness.failures["runner-service-preflight"]
 		},
 		accounts: func(context.Context, installplan.Spec) (accountTransaction, error) {
 			harness.operations = append(harness.operations, "accounts-provision")
@@ -126,6 +145,30 @@ func (harness *transactionHarness) dependencies() dependencies {
 				return nil, err
 			}
 			return harness.service, nil
+		},
+		runnerStorage: func(context.Context, string, string, string, *runnerpackage.Image) (runnerStorageTransaction, error) {
+			harness.operations = append(harness.operations, "runner-storage-provision")
+			if err := harness.failures["runner-storage-provision"]; err != nil {
+				return nil, err
+			}
+			return harness.runnerStorage, nil
+		},
+		runnerRegistration: func(context.Context, string, runnerregistration.Request, runnerStorageTransaction) (serviceTransaction, error) {
+			harness.operations = append(harness.operations, "runner-registration-provision")
+			if err := harness.failures["runner-registration-provision"]; err != nil {
+				return nil, err
+			}
+			return harness.registration, nil
+		},
+		runnerService: func(_ context.Context, _ string, _ string, password []byte, _ runnerStorageTransaction) (serviceTransaction, error) {
+			harness.operations = append(harness.operations, "runner-service-provision")
+			if !bytes.Equal(password, harness.controlOriginal) {
+				return nil, errors.New("unexpected control password")
+			}
+			if err := harness.failures["runner-service-provision"]; err != nil {
+				return nil, err
+			}
+			return harness.runnerService, nil
 		},
 	}
 }
@@ -210,6 +253,28 @@ func (transaction *fakeRootTransaction) Close() error {
 	return transaction.harness.failures["root-close"]
 }
 
+func (transaction *fakeRunnerStorageTransaction) SealGeneratedState(context.Context) error {
+	return nil
+}
+
+func (transaction *fakeRunnerStorageTransaction) VerifyRegistrationState(context.Context) error {
+	return nil
+}
+
+func (transaction *fakeRunnerStorageTransaction) VerifyServiceExecutable(context.Context) error {
+	return nil
+}
+
+func (transaction *fakeRunnerStorageTransaction) Commit() error {
+	transaction.harness.operations = append(transaction.harness.operations, "runner-storage-commit")
+	return transaction.harness.failures["runner-storage-commit"]
+}
+
+func (transaction *fakeRunnerStorageTransaction) Close() error {
+	transaction.harness.operations = append(transaction.harness.operations, "runner-storage-close")
+	return transaction.harness.failures["runner-storage-close"]
+}
+
 func (sealer fakeSealer) Seal(password []byte) ([]byte, error) {
 	sealer.harness.operations = append(sealer.harness.operations, "execution-password-seal")
 	if !bytes.Equal(password, sealer.harness.executionOriginal) {
@@ -227,6 +292,7 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 	layout := harness.root.layout
 	expected := []string{
 		"service-preflight",
+		"runner-service-preflight",
 		"accounts-provision",
 		"filesystem-provision",
 		"root-provision",
@@ -241,6 +307,9 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 		"layout-verify",
 		"execution-password-clear",
 		"service-provision",
+		"runner-storage-provision",
+		"runner-registration-provision",
+		"runner-service-provision",
 	}
 	if !reflect.DeepEqual(harness.operations, expected) {
 		t.Fatalf("unexpected installer stage order: %#v", harness.operations)
@@ -264,7 +333,7 @@ func TestProvisionComposesTheExactVerifiedOrder(t *testing.T) {
 	if err := lease.Close(); err != nil {
 		t.Fatal(err)
 	}
-	expectedTail := []string{"service-close", "root-close", "filesystem-close", "accounts-close"}
+	expectedTail := []string{"runner-service-close", "registration-close", "runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}
 	actualTail := harness.operations[len(harness.operations)-len(expectedTail):]
 	if !reflect.DeepEqual(actualTail, expectedTail) {
 		t.Fatalf("composite rollback order differs: %#v", actualTail)
@@ -279,6 +348,7 @@ func TestProvisionRollsBackEveryOwnedStageFailure(t *testing.T) {
 		closed []string
 	}{
 		{stage: "service-preflight", rule: "service-preflight-failed"},
+		{stage: "runner-service-preflight", rule: "runner-service-preflight-failed"},
 		{stage: "accounts-provision", rule: "account-provision-failed"},
 		{stage: "filesystem-provision", rule: "filesystem-provision-failed", closed: []string{"accounts-close"}},
 		{stage: "root-provision", rule: "installation-root-provision-failed", closed: []string{"filesystem-close", "accounts-close"}},
@@ -286,6 +356,9 @@ func TestProvisionRollsBackEveryOwnedStageFailure(t *testing.T) {
 		{stage: "state-materialize", rule: "installation-state-materialization-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "execution-password-clear", rule: "execution-password-clear-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
 		{stage: "service-provision", rule: "service-provision-failed", closed: []string{"root-close", "filesystem-close", "accounts-close"}},
+		{stage: "runner-storage-provision", rule: "runner-storage-provision-failed", closed: []string{"service-close", "root-close", "filesystem-close", "accounts-close"}},
+		{stage: "runner-registration-provision", rule: "runner-registration-failed", closed: []string{"runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}},
+		{stage: "runner-service-provision", rule: "runner-service-provision-failed", closed: []string{"registration-close", "runner-storage-close", "service-close", "root-close", "filesystem-close", "accounts-close"}},
 	}
 	for _, test := range tests {
 		t.Run(test.stage, func(t *testing.T) {
@@ -340,35 +413,6 @@ func TestCancellationAfterServiceCreationRollsBackEverything(t *testing.T) {
 	}
 }
 
-func TestUseControlPasswordClearsOnlyTheTemporaryConsumerCopy(t *testing.T) {
-	harness := newTransactionHarness(t)
-	lease, err := provision(context.Background(), preparedInstallerInput(t), harness.dependencies())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lease.Close()
-	var retained []byte
-	if err := lease.UseControlPassword(func(password []byte) error {
-		if !bytes.Equal(password, harness.controlOriginal) {
-			t.Fatal("consumer did not receive the generated control password")
-		}
-		retained = password
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	assertZeroBuffer(t, retained)
-	if len(harness.account.control) == 0 {
-		t.Fatal("temporary consumer clearing removed the lease-owned credential")
-	}
-	retained = nil
-	assertInstallerRule(t, lease.UseControlPassword(func(password []byte) error {
-		retained = password
-		return errors.New("synthetic consumer failure")
-	}), "control-password-consumer-failed")
-	assertZeroBuffer(t, retained)
-}
-
 func TestCommitFinalizesServiceFirstAndClearsControlCredential(t *testing.T) {
 	harness := newTransactionHarness(t)
 	lease, err := provision(context.Background(), preparedInstallerInput(t), harness.dependencies())
@@ -378,7 +422,7 @@ func TestCommitFinalizesServiceFirstAndClearsControlCredential(t *testing.T) {
 	if err := lease.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	expectedTail := []string{"service-commit", "accounts-commit", "filesystem-commit", "root-commit"}
+	expectedTail := []string{"runner-service-commit", "service-commit", "registration-commit", "runner-storage-commit", "accounts-commit", "filesystem-commit", "root-commit"}
 	actualTail := harness.operations[len(harness.operations)-len(expectedTail):]
 	if !reflect.DeepEqual(actualTail, expectedTail) {
 		t.Fatalf("commit order differs: %#v", actualTail)
@@ -400,7 +444,10 @@ func TestServiceCommitFailureRollsBackAllOwnedStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertInstallerRule(t, lease.Commit(), "service-commit-failed")
-	expectedTail := []string{"service-commit", "service-close", "root-close", "filesystem-close", "accounts-close"}
+	expectedTail := []string{
+		"runner-service-commit", "service-commit", "registration-close", "runner-storage-close",
+		"service-close", "root-close", "filesystem-close", "accounts-close",
+	}
 	actualTail := harness.operations[len(harness.operations)-len(expectedTail):]
 	if !reflect.DeepEqual(actualTail, expectedTail) {
 		t.Fatalf("failed commit rollback order differs: %#v", actualTail)
@@ -456,14 +503,53 @@ func TestProvisionRequiresEveryDependencyBeforeMutation(t *testing.T) {
 
 func preparedInstallerInput(t *testing.T) preparedInput {
 	t.Helper()
-	prepared, err := prepareInput(Input{
+	prepared, err := prepareInputWithPolicy(Input{
 		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA,
-		BrokerImage: syntheticBrokerImage(testSourceSHA),
-	})
+		BrokerImage: syntheticBrokerImage(testSourceSHA), RunnerImage: syntheticRunnerImage(t),
+		RunnerRegistration: syntheticRunnerRegistration(t),
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return prepared
+}
+
+func syntheticRunnerImage(t *testing.T) *runnerpackage.Image {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for _, name := range []string{"bin/Runner.Listener.exe", "bin/RunnerService.exe"} {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte("synthetic runner image")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	encoded := archive.Bytes()
+	sum := sha256.Sum256(encoded)
+	image, err := runnerpackage.Inspect("2.337.0", hex.EncodeToString(sum[:]), encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return image
+}
+
+func syntheticRunnerRegistration(t *testing.T) runnerregistration.Request {
+	t.Helper()
+	repository, err := runnerregistration.VerifyPrivateRepository("example/control-plane", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runnerregistration.Request{
+		Repository: repository, RunnerName: "workstation-1",
+		RegistrationToken: []byte("synthetic-registration-token-1"),
+		RemovalToken:      []byte("synthetic-removal-token-2"),
+	}
 }
 
 func containsInstallerOperation(operations []string, expected string) bool {

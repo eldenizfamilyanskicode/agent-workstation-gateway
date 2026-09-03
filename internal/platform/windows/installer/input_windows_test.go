@@ -19,8 +19,11 @@ import (
 const testSourceSHA = "0123456789abcdef0123456789abcdef01234567"
 
 func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
-	input := Input{Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA)}
-	prepared, err := prepareInput(input)
+	input := Input{
+		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
+		RunnerImage: syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+	}
+	prepared, err := prepareInputWithPolicy(input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +35,10 @@ func TestPrepareInputPinsValidatedSpecificationAndBrokerImage(t *testing.T) {
 }
 
 func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
-	valid := Input{Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA)}
+	valid := Input{
+		Specification: installerSpec(), GatewaySourceSHA: testSourceSHA, BrokerImage: syntheticBrokerImage(testSourceSHA),
+		RunnerImage: syntheticRunnerImage(t), RunnerRegistration: syntheticRunnerRegistration(t),
+	}
 	tests := []struct {
 		name   string
 		mutate func(*Input)
@@ -46,15 +52,18 @@ func TestPrepareInputRejectsEveryAuthorityInputBeforeMutation(t *testing.T) {
 			binary.LittleEndian.PutUint16(input.BrokerImage[0x96:0x98], peExecutableImageFlag|peDLLFlag)
 		}},
 		{name: "missing embedded sha", rule: "broker-image-invalid", mutate: func(input *Input) { copy(input.BrokerImage[0xc0:], []byte("ffffffffffffffffffffffffffffffffffffffff")) }},
+		{name: "runner image", rule: "runner-image-invalid", mutate: func(input *Input) { input.RunnerImage = nil }},
+		{name: "runner registration", rule: "runner-registration-invalid", mutate: func(input *Input) { input.RunnerRegistration.RemovalToken = nil }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := Input{
 				Specification: cloneSpecification(valid.Specification), GatewaySourceSHA: valid.GatewaySourceSHA,
-				BrokerImage: append([]byte(nil), valid.BrokerImage...),
+				BrokerImage: append([]byte(nil), valid.BrokerImage...), RunnerImage: valid.RunnerImage,
+				RunnerRegistration: cloneRegistration(valid.RunnerRegistration),
 			}
 			test.mutate(&input)
-			_, err := prepareInput(input)
+			_, err := prepareInputWithPolicy(input, false)
 			assertInstallerRule(t, err, test.rule)
 		})
 	}
