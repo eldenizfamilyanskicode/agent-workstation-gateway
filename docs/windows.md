@@ -62,7 +62,7 @@ C:\ProgramData\AgentWorkstationGateway\state\installation.json
 
 The installation root may not be a drive root and may not overlap any approved workload, profile, or temporary root. Product-owned state paths never come from a remote request.
 
-The native store converges gateway-owned directories to a protected LocalSystem/Administrators-only DACL. Protected files have explicit non-inherited LocalSystem/Administrators-only full-control ACEs. It opens directories/files with `FILE_FLAG_OPEN_REPARSE_POINT`, compares same-handle final paths, and rejects aliases or reparse points.
+The native store creates gateway-owned directories and files with Builtin Administrators ownership and a protected LocalSystem/Administrators-only DACL. Using the administrator owner is required for direct creation by an elevated installer; assigning LocalSystem as creator-time owner is rejected by Windows. It opens directories/files with `FILE_FLAG_OPEN_REPARSE_POINT`, compares same-handle final paths, and rejects aliases or reparse points.
 
 File updates use a cryptographically random sibling temporary name, exclusive native creation with the final protected descriptor, bounded writes, `FlushFileBuffers`, close, and write-through replacement. The resulting handle path, type, size, owner, and DACL are checked again. Temporary files are removed on failed writes.
 

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	FileSDDL      = "O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)"
-	DirectorySDDL = "O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+	FileSDDL      = "O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)"
+	DirectorySDDL = "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
 )
 
 type Error struct {
