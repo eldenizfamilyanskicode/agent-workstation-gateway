@@ -50,6 +50,19 @@ type memoryWriter struct {
 	closed bool
 }
 
+type discardStore struct {
+	files int
+}
+
+type discardWriter struct{ io.Writer }
+
+func (*discardStore) CreateDirectory(string) error { return nil }
+func (store *discardStore) CreateFile(string) (io.WriteCloser, error) {
+	store.files++
+	return discardWriter{Writer: io.Discard}, nil
+}
+func (discardWriter) Close() error { return nil }
+
 func (writer *memoryWriter) Close() error {
 	writer.closed = true
 	return nil
@@ -92,6 +105,28 @@ func TestProductionInspectionRejectsCallerPairedArchiveAndDigest(t *testing.T) {
 	}
 	_, err := InspectPinnedWindowsX64(archive)
 	assertPackageError(t, err, "pinned-archive-size-mismatch")
+}
+
+func TestPinnedWindowsX64ArchiveWhenSupplied(t *testing.T) {
+	path := os.Getenv("AWG_PINNED_RUNNER_ARCHIVE")
+	if path == "" {
+		t.Skip("set AWG_PINNED_RUNNER_ARCHIVE for the audited release-asset gate")
+	}
+	archive, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := InspectPinnedWindowsX64(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &discardStore{}
+	if err := image.Extract(context.Background(), store); err != nil {
+		t.Fatal(err)
+	}
+	if !image.PinnedWindowsX64() || store.files == 0 {
+		t.Fatal("pinned official archive produced no verified file stream")
+	}
 }
 
 func TestInspectRejectsInvalidVersionDigestAndShape(t *testing.T) {
