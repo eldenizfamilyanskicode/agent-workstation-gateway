@@ -18,7 +18,7 @@ type protectedCredentialFile struct {
 }
 
 func (file protectedCredentialFile) Read() ([]byte, error) {
-	protected, err := protectedstate.ReadExactFile(file.path, maxProtectedBlobBytes)
+	protected, err := protectedstate.ReadExactFile(file.path, MaxProtectedCredentialBytes)
 	if err != nil {
 		return nil, boundaryError("credential-file-denied")
 	}

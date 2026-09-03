@@ -71,7 +71,7 @@ func TestMachineCredentialProtectionBoundsInputs(t *testing.T) {
 		})
 	}
 
-	_, err := unprotectPassword(bytes.Repeat([]byte{'x'}, maxProtectedBlobBytes+1))
+	_, err := unprotectPassword(bytes.Repeat([]byte{'x'}, MaxProtectedCredentialBytes+1))
 	assertBoundaryRule(t, err, "credential-blob-invalid")
 }
 

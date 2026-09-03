@@ -10,11 +10,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const (
-	maxPasswordBytes       = 1024
-	maxProtectedBlobBytes  = 64 * 1024
-	credentialProtectFlags = windows.CRYPTPROTECT_LOCAL_MACHINE | windows.CRYPTPROTECT_UI_FORBIDDEN
-)
+const maxPasswordBytes = 1024
+
+// MaxProtectedCredentialBytes is the installed credential file and DPAPI blob limit.
+const MaxProtectedCredentialBytes = 64 * 1024
+
+const credentialProtectFlags = windows.CRYPTPROTECT_LOCAL_MACHINE | windows.CRYPTPROTECT_UI_FORBIDDEN
 
 var credentialEntropy = []byte("agent-workstation-gateway/windows-execution-credential/v1")
 
@@ -36,7 +37,7 @@ func ProtectPassword(password []byte) ([]byte, error) {
 }
 
 func unprotectPassword(protected []byte) ([]byte, error) {
-	if len(protected) == 0 || len(protected) > maxProtectedBlobBytes {
+	if len(protected) == 0 || len(protected) > MaxProtectedCredentialBytes {
 		return nil, boundaryError("credential-blob-invalid")
 	}
 	input := append([]byte(nil), protected...)
@@ -62,7 +63,7 @@ func cryptProtect(input []byte) ([]byte, error) {
 	); err != nil {
 		return nil, err
 	}
-	return copyAndFreeBlob(&outputBlob, maxProtectedBlobBytes)
+	return copyAndFreeBlob(&outputBlob, MaxProtectedCredentialBytes)
 }
 
 func cryptUnprotect(input []byte) ([]byte, error) {
