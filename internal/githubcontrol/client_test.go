@@ -1,0 +1,142 @@
+package githubcontrol
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	v1 "github.com/eldenizfamilyanskicode/agent-workstation-gateway/protocol/v1"
+)
+
+var testToken = []byte("synthetic-hosted-token")
+
+func TestPublishAcceptedVerifiesPrivateAndCreatesOnce(t *testing.T) {
+	record := githubAccepted(t)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.Header.Get("Authorization") != "Bearer "+string(testToken) {
+			t.Error("authorization header missing")
+		}
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/alice/example-control":
+			_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private"}`))
+		case request.Method == http.MethodPut && request.URL.Path == "/repos/alice/example-control/contents/ledger/requests/req-1/accepted.json":
+			var payload createFileRequest
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Error(err)
+			}
+			content, err := base64.StdEncoding.DecodeString(payload.Content)
+			if err != nil {
+				t.Error(err)
+			}
+			decoded, err := v1.DecodeAcceptedRequestRecord(content)
+			if err != nil || decoded.RequestID != record.RequestID {
+				t.Errorf("invalid published record: %v", err)
+			}
+			writer.WriteHeader(http.StatusCreated)
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.PublishAccepted(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("unexpected request count: %d", requests)
+	}
+}
+
+func TestVerifyPrivateRejectsPublicRepository(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":false,"visibility":"public"}`))
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.VerifyPrivate(context.Background()); err == nil || !strings.Contains(err.Error(), "private-repository-required") {
+		t.Fatalf("public repository was accepted: %v", err)
+	}
+}
+
+func TestPublishConflictFailsClosed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			_, _ = writer.Write([]byte(`{"full_name":"alice/example-control","private":true,"visibility":"private"}`))
+			return
+		}
+		writer.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	defer server.Close()
+	client, err := newClient(server.URL, testToken, "alice/example-control", server.Client(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.PublishAccepted(context.Background(), githubAccepted(t)); err == nil || !strings.Contains(err.Error(), "create-once-conflict") {
+		t.Fatalf("conflict was not closed: %v", err)
+	}
+}
+
+func TestClientRejectsUnsafeInputsAndClearsToken(t *testing.T) {
+	for _, test := range []struct {
+		base, repository string
+		token            []byte
+	}{
+		{base: "http://api.example", repository: "alice/example-control", token: testToken},
+		{base: "https://api.example/path", repository: "alice/example-control", token: testToken},
+		{base: "https://api.example", repository: "alice/example.git", token: testToken},
+		{base: "https://api.example", repository: "alice/example-control", token: []byte("short")},
+	} {
+		if _, err := newClient(test.base, test.token, test.repository, http.DefaultClient, false); err == nil {
+			t.Fatalf("unsafe client accepted: %#v", test)
+		}
+	}
+	client, err := newClient("https://api.example", testToken, "alice/example-control", http.DefaultClient, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := client.token
+	client.Close()
+	if client.token != nil {
+		t.Fatal("token retained after close")
+	}
+	for _, value := range owned {
+		if value != 0 {
+			t.Fatal("owned token copy was not cleared")
+		}
+	}
+}
+
+func githubAccepted(t *testing.T) v1.AcceptedRequestRecord {
+	t.Helper()
+	request := v1.Request{
+		ProtocolVersion: v1.Version, RequestID: "req-1", SessionID: "session-1", Actor: "alice", Shell: v1.ShellPowerShell,
+		WorkingDirectory: `C:\Users\Alice\Projects`, Script: "Write-Output hello", TimeoutSeconds: 30,
+		MaxOutputBytes: 4096, Artifacts: []v1.ArtifactSelection{},
+	}
+	digest, err := v1.DigestRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v1.AcceptedRequestRecord{
+		ProtocolVersion: v1.Version, RequestID: request.RequestID, RequestDigest: digest, Request: request,
+		Issue:            v1.IssueProvenance{Number: 1, NodeID: "I_example", SenderID: 2, SenderLogin: "alice"},
+		Workflow:         v1.WorkflowProvenance{Repository: "alice/example-control", RunID: 3, RunAttempt: 1, EventName: "issues", EventAction: "opened", HeadSHA: strings.Repeat("1", 40)},
+		ControlSourceSHA: strings.Repeat("2", 40), AcceptedAt: "2026-09-03T08:00:00Z",
+	}
+}

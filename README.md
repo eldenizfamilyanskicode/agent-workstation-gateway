@@ -54,6 +54,8 @@ The current transport decision uses a bounded GitHub issue request in that priva
 
 The bootstrap implementation will hard-fail if a selected control repository is public. The initial release will not provide an unsafe override.
 
+The implemented hosted accept/finalize boundary and inert workflow template are described in [`docs/private-control.md`](docs/private-control.md). The template belongs outside this source repository's active `.github/workflows` directory.
+
 ## Security model
 
 The current design requires these boundaries:

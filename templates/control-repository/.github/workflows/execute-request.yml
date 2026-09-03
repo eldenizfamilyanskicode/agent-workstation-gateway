@@ -1,0 +1,106 @@
+name: Execute AWG request
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+concurrency:
+  group: awg-request-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  AWG_CONTROL_URL: '__AWG_CONTROL_URL__'
+  AWG_CONTROL_SHA256: '__AWG_CONTROL_SHA256__'
+
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      accepted: ${{ steps.accept.outputs.accepted }}
+    steps:
+      - name: Download pinned hosted control binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --proto '=https' --tlsv1.2 --output "$RUNNER_TEMP/awg-control" "$AWG_CONTROL_URL"
+          printf '%s  %s\n' "$AWG_CONTROL_SHA256" "$RUNNER_TEMP/awg-control" | sha256sum --check --strict
+          chmod 0700 "$RUNNER_TEMP/awg-control"
+      - name: Accept and publish immutable request
+        id: accept
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/awg-control" accept --event "$GITHUB_EVENT_PATH" --output "$RUNNER_TEMP/accepted.json"
+          "$RUNNER_TEMP/awg-control" publish --kind accepted --input "$RUNNER_TEMP/accepted.json"
+          {
+            printf 'accepted='
+            base64 --wrap=0 "$RUNNER_TEMP/accepted.json"
+            printf '\n'
+          } >> "$GITHUB_OUTPUT"
+
+  execute:
+    needs: accept
+    runs-on: [agent-workstation-gateway]
+    permissions: {}
+    steps:
+      - name: Execute through installed gateway
+        shell: powershell
+        env:
+          AWG_ACCEPTED_BASE64: ${{ needs.accept.outputs.accepted }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exchange = Join-Path $env:RUNNER_TEMP 'awg-exchange'
+          $accepted = Join-Path $exchange 'accepted.json'
+          $response = Join-Path $exchange 'response'
+          [IO.Directory]::CreateDirectory($exchange) | Out-Null
+          [IO.File]::WriteAllBytes($accepted, [Convert]::FromBase64String($env:AWG_ACCEPTED_BASE64))
+          Remove-Item Env:AWG_ACCEPTED_BASE64
+          $attempt = 'run-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT
+          & '__AWG_INSTALLATION_ROOT__\bin\awg.exe' execute-local --accepted $accepted --attempt $attempt --output $response
+          if ($LASTEXITCODE -ne 0) { throw 'installed gateway execution failed' }
+          Copy-Item -LiteralPath $accepted -Destination (Join-Path $response 'accepted.json')
+      - name: Return bounded response
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: awg-response-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}\awg-exchange\response
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  finalize:
+    needs: [accept, execute]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download pinned hosted control binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --proto '=https' --tlsv1.2 --output "$RUNNER_TEMP/awg-control" "$AWG_CONTROL_URL"
+          printf '%s  %s\n' "$AWG_CONTROL_SHA256" "$RUNNER_TEMP/awg-control" | sha256sum --check --strict
+          chmod 0700 "$RUNNER_TEMP/awg-control"
+      - name: Download bounded response
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: awg-response-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/awg-response
+      - name: Finalize and publish result
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/awg-control" finalize \
+            --accepted "$RUNNER_TEMP/awg-response/accepted.json" \
+            --report "$RUNNER_TEMP/awg-response/execution-report.json" \
+            --output "$RUNNER_TEMP/result.json"
+          "$RUNNER_TEMP/awg-control" publish --kind result --input "$RUNNER_TEMP/result.json"
