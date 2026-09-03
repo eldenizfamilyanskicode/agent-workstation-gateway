@@ -33,6 +33,16 @@ var requiredFiles = []string{
 	"bin/RunnerService.exe",
 }
 
+var reservedRuntimeRoots = map[string]struct{}{
+	".credentials":           {},
+	".credentials_rsaparams": {},
+	".runner":                {},
+	".service":               {},
+	"_diag":                  {},
+	"_work":                  {},
+	"responses":              {},
+}
+
 type Store interface {
 	CreateDirectory(string) error
 	CreateFile(string) (io.WriteCloser, error)
@@ -221,6 +231,9 @@ func validateEntry(entry *zip.File) (string, bool, error) {
 		if segment == "" || segment == "." || segment == ".." {
 			return "", false, packageError("entry-path-invalid")
 		}
+	}
+	if _, reserved := reservedRuntimeRoots[strings.ToLower(segments[0])]; reserved {
+		return "", false, packageError("entry-runtime-path-denied")
 	}
 	if platformpath.ValidateAbsolute(platformpath.Windows, `C:\runner\`+strings.Join(segments, `\`)) != nil {
 		return "", false, packageError("entry-windows-path-denied")

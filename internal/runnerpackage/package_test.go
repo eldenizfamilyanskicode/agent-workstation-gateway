@@ -119,6 +119,7 @@ func TestInspectRejectsUnsafeEntries(t *testing.T) {
 		{name: "backslash", entry: archiveEntry{name: `bin\alias.txt`}, rule: "entry-path-invalid"},
 		{name: "device", entry: archiveEntry{name: "bin/CON.txt"}, rule: "entry-windows-path-denied"},
 		{name: "symlink", entry: archiveEntry{name: "bin/link", mode: os.ModeSymlink | 0o777}, rule: "entry-file-denied"},
+		{name: "runtime state", entry: archiveEntry{name: ".credentials", content: []byte("synthetic")}, rule: "entry-runtime-path-denied"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
