@@ -22,7 +22,7 @@ import (
 const syntheticExecutionSID = "S-1-5-21-3000-3000-3000-4300"
 
 func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) {
-	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	installationRoot := filepath.Join(canonicalTempDir(t), "gateway")
 	image := validImage(t)
 	controlSID := currentAccountSID(t)
 	lease, err := provisionFixture(context.Background(), installationRoot, controlSID, syntheticExecutionSID, image)
@@ -70,7 +70,7 @@ func TestProvisionExtractsProtectedRunnerAndRollbackOwnsExactTree(t *testing.T) 
 }
 
 func TestProvisionCommitPreservesRunnerAndClosesLease(t *testing.T) {
-	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	installationRoot := filepath.Join(canonicalTempDir(t), "gateway")
 	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestProvisionCommitPreservesRunnerAndClosesLease(t *testing.T) {
 }
 
 func TestProvisionRejectsExistingRunnerRootWithoutAdoption(t *testing.T) {
-	parent := t.TempDir()
+	parent := canonicalTempDir(t)
 	installationRoot := filepath.Join(parent, "gateway")
 	runnerRoot := installationRoot + "-runner"
 	if err := os.Mkdir(runnerRoot, 0o700); err != nil {
@@ -114,7 +114,7 @@ func TestProvisionRejectsExistingRunnerRootWithoutAdoption(t *testing.T) {
 }
 
 func TestProvisionRejectsInvalidOrEqualIdentitiesBeforeMutation(t *testing.T) {
-	parent := t.TempDir()
+	parent := canonicalTempDir(t)
 	installationRoot := filepath.Join(parent, "gateway")
 	control := currentAccountSID(t)
 	for _, identifiers := range [][2]string{{"S-1-5-18", syntheticExecutionSID}, {control, control}} {
@@ -128,7 +128,7 @@ func TestProvisionRejectsInvalidOrEqualIdentitiesBeforeMutation(t *testing.T) {
 }
 
 func TestExportedProvisionRejectsUnpinnedPackageBeforeMutation(t *testing.T) {
-	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	installationRoot := filepath.Join(canonicalTempDir(t), "gateway")
 	if _, err := Provision(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t)); err == nil {
 		t.Fatal("caller-paired archive and digest reached runner storage mutation")
 	}
@@ -138,7 +138,7 @@ func TestExportedProvisionRejectsUnpinnedPackageBeforeMutation(t *testing.T) {
 }
 
 func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.T) {
-	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	installationRoot := filepath.Join(canonicalTempDir(t), "gateway")
 	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestSealGeneratedStateProtectsVerifiesAndRollsBackConfiguration(t *testing.
 }
 
 func TestVerifyRegistrationStateRejectsIncompleteGeneratedState(t *testing.T) {
-	installationRoot := filepath.Join(t.TempDir(), "gateway")
+	installationRoot := filepath.Join(canonicalTempDir(t), "gateway")
 	lease, err := provisionFixture(context.Background(), installationRoot, currentAccountSID(t), syntheticExecutionSID, validImage(t))
 	if err != nil {
 		t.Fatal(err)
@@ -267,4 +267,27 @@ func currentAccountSID(t *testing.T) string {
 		t.Skipf("current test identity is not a local/domain account: %s", identifier)
 	}
 	return identifier
+}
+
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	path := t.TempDir()
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(
+		pointer, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(handle)
+	canonical, err := finalPath(handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical
 }
